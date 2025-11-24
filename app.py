@@ -11,64 +11,28 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS customizado para botões coloridos
+# CSS customizado para botões coloridos do Streamlit
 st.markdown("""
 <style>
-.horario-btn {
-    display: inline-block;
-    padding: 12px 16px;
-    margin: 4px;
-    border: none;
-    border-radius: 8px;
-    font-weight: bold;
-    font-size: 14px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    text-align: center;
-    width: calc(20% - 8px);
-    box-sizing: border-box;
+/* Botões verdes para horários disponíveis */
+div[data-testid="stButtonContainer"] > button[kind="secondary"] {
+    background-color: #10B981 !important;
+    color: white !important;
+    border: none !important;
 }
 
-.horario-disponivel {
-    background-color: #10B981;
-    color: white;
+div[data-testid="stButtonContainer"] > button[kind="secondary"]:hover {
+    background-color: #059669 !important;
 }
 
-.horario-disponivel:hover {
-    background-color: #059669;
-    transform: scale(1.05);
-    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+/* Botões azuis para horários selecionados */
+div[data-testid="stButtonContainer"] > button[kind="primary"] {
+    background-color: #3B82F6 !important;
+    color: white !important;
 }
 
-.horario-selecionado {
-    background-color: #3B82F6;
-    color: white;
-    border: 2px solid #1E40AF;
-    box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
-}
-
-.horario-selecionado:hover {
-    background-color: #1D4ED8;
-}
-
-.horario-reservado {
-    background-color: #9CA3AF;
-    color: #4B5563;
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-.horarios-container {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin: 20px 0;
-}
-
-@media (max-width: 768px) {
-    .horario-btn {
-        width: calc(33.33% - 8px);
-    }
+div[data-testid="stButtonContainer"] > button[kind="primary"]:hover {
+    background-color: #1D4ED8 !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -193,40 +157,21 @@ if menu == "🏪 Agendar Serviço":
         horarios_disponiveis = [h['hora'] for h in horarios_status if h['status'] == 'disponivel']
         horarios_reservados = [h['hora'] for h in horarios_status if h['status'] == 'agendado']
         
-        # Mostrar legenda com cores reais
+        # Mostrar legenda
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.markdown('<span style="background-color: #10B981; color: white; padding: 8px 16px; border-radius: 6px; display: inline-block;">🟢 Verde = Disponível</span>', unsafe_allow_html=True)
+            st.write("🟢 **Verde** = Disponível")
         with col2:
-            st.markdown('<span style="background-color: #3B82F6; color: white; padding: 8px 16px; border-radius: 6px; display: inline-block;">🔵 Azul = Selecionado</span>', unsafe_allow_html=True)
+            st.write("🔵 **Azul** = Selecionado")
         with col3:
-            st.markdown('<span style="background-color: #9CA3AF; color: white; padding: 8px 16px; border-radius: 6px; display: inline-block;">⚫ Cinza = Reservado</span>', unsafe_allow_html=True)
+            st.write("⚫ **Cinza** = Reservado")
         
         st.divider()
         
-        # Horários disponíveis com HTML colorido
+        # HORÁRIOS DISPONÍVEIS com botões verdes
         st.markdown("**Horários disponíveis:**")
         
         hora_selecionada = st.session_state.get('hora_selecionada', None)
-        
-        # Criar HTML dos botões disponíveis
-        html_horarios = '<div class="horarios-container">'
-        
-        for hora in horarios_disponiveis:
-            if hora == hora_selecionada:
-                classe = "horario-selecionado"
-                label = f"✅ {hora}"
-            else:
-                classe = "horario-disponivel"
-                label = f"⏰ {hora}"
-            
-            html_horarios += f'<button class="horario-btn {classe}" onclick="alert(\'{hora}\')">{label}</button>'
-        
-        html_horarios += '</div>'
-        st.markdown(html_horarios, unsafe_allow_html=True)
-        
-        # Usar session_state para capturar seleção
-        st.markdown("**Ou clique no horário abaixo com botões funcionais:**")
         
         num_colunas = 5
         for i in range(0, len(horarios_disponiveis), num_colunas):
@@ -236,23 +181,26 @@ if menu == "🏪 Agendar Serviço":
                     hora = horarios_disponiveis[i + j]
                     
                     if hora == hora_selecionada:
-                        if col.button(f"✅ {hora}", key=f"btn_{hora}", use_container_width=True):
+                        # Botão azul (selecionado) - tipo primary
+                        if col.button(f"✅ {hora}", key=f"btn_{hora}", use_container_width=True, type="primary"):
                             st.session_state['hora_selecionada'] = None
                     else:
+                        # Botão verde (disponível) - tipo secondary
                         if col.button(f"⏰ {hora}", key=f"btn_{hora}", use_container_width=True):
                             st.session_state['hora_selecionada'] = hora
         
         st.divider()
         
-        # HORÁRIOS RESERVADOS
+        # HORÁRIOS RESERVADOS (desabilitados)
         if horarios_reservados:
             st.markdown("**Horários já reservados:**")
             
-            html_reservados = '<div class="horarios-container">'
-            for hora in horarios_reservados:
-                html_reservados += f'<button class="horario-btn horario-reservado" disabled>🚫 {hora}</button>'
-            html_reservados += '</div>'
-            st.markdown(html_reservados, unsafe_allow_html=True)
+            for i in range(0, len(horarios_reservados), num_colunas):
+                cols = st.columns(num_colunas)
+                for j, col in enumerate(cols):
+                    if i + j < len(horarios_reservados):
+                        hora = horarios_reservados[i + j]
+                        col.button(f"🚫 {hora}", key=f"btn_res_{hora}", use_container_width=True, disabled=True)
         
         # Mostrar seleção atual
         hora_selecionada = st.session_state.get('hora_selecionada', None)
