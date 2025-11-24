@@ -4,11 +4,169 @@ from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta, time
 
 st.set_page_config(
-    page_title="Sistema de Agendamento",
-    page_icon="📅",
+    page_title="Agendamento - Capital Pneus",
+    page_icon="🛞",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# ESTILO CAPITAL PNEUS - Cores profissionais
+st.markdown("""
+<style>
+:root {
+    --capital-azul: #003366;
+    --capital-laranja: #FF6600;
+    --capital-cinza: #666666;
+    --capital-claro: #F5F5F5;
+    --michelin-amarelo: #FFD700;
+}
+
+body {
+    background-color: var(--capital-claro);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.header-capital {
+    background: linear-gradient(135deg, var(--capital-azul) 0%, #004488 100%);
+    color: white;
+    padding: 30px;
+    border-radius: 10px;
+    margin-bottom: 30px;
+    box-shadow: 0 4px 12px rgba(0, 51, 102, 0.15);
+    text-align: center;
+}
+
+.header-capital h1 {
+    margin: 0;
+    font-size: 2.5em;
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+
+.header-capital p {
+    margin: 10px 0 0 0;
+    font-size: 1em;
+    opacity: 0.9;
+}
+
+.info-box {
+    background-color: #E8F4F8;
+    border-left: 4px solid var(--capital-laranja);
+    padding: 15px;
+    border-radius: 5px;
+    margin: 15px 0;
+    color: var(--capital-azul);
+    font-weight: 500;
+}
+
+.form-section {
+    background-color: white;
+    padding: 25px;
+    border-radius: 8px;
+    margin: 20px 0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    border-top: 3px solid var(--capital-laranja);
+}
+
+.form-section h3 {
+    color: var(--capital-azul);
+    margin-top: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.horarios-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 12px;
+    margin: 20px 0;
+}
+
+/* Botões - Cores Capital Pneus */
+.stButton > button {
+    border-radius: 6px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    border: none;
+}
+
+.stButton > button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Botão Verde - Disponível */
+[data-testid="stButton"] button:not(:disabled):not([type="secondary"]):not([type="primary"]) {
+    background-color: #27AE60 !important;
+    color: white !important;
+}
+
+[data-testid="stButton"] button:not(:disabled):not([type="secondary"]):not([type="primary"]):hover {
+    background-color: #229954 !important;
+}
+
+/* Botão Azul - Primário */
+[data-testid="stButton"] button[type="primary"] {
+    background-color: var(--capital-azul) !important;
+    color: white !important;
+}
+
+[data-testid="stButton"] button[type="primary"]:hover {
+    background-color: #002244 !important;
+}
+
+/* Botão Cinza - Desabilitado */
+[data-testid="stButton"] button:disabled {
+    background-color: #CCCCCC !important;
+    color: #666666 !important;
+    opacity: 0.6;
+    cursor: not-allowed !important;
+}
+
+.success-message {
+    background-color: #D4EDDA;
+    border-left: 4px solid #28A745;
+    padding: 15px;
+    border-radius: 5px;
+    color: #155724;
+}
+
+.error-message {
+    background-color: #F8D7DA;
+    border-left: 4px solid #DC3545;
+    padding: 15px;
+    border-radius: 5px;
+    color: #721C24;
+}
+
+.marca-footer {
+    text-align: center;
+    padding: 20px;
+    color: var(--capital-cinza);
+    font-size: 0.9em;
+    border-top: 1px solid #DDDDDD;
+    margin-top: 40px;
+}
+
+.logo-michelin {
+    display: inline-block;
+    margin: 0 10px;
+    color: var(--capital-laranja);
+    font-weight: bold;
+}
+
+@media (max-width: 768px) {
+    .header-capital h1 {
+        font-size: 1.8em;
+    }
+    
+    .horarios-container {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+</style>
+""", unsafe_allow_html=True)
 
 def execute_query(query, params=None, fetch=True, commit=False):
     """Executa query no banco"""
@@ -48,8 +206,6 @@ def normalizar_hora(hora):
     if isinstance(hora, time):
         return hora.strftime("%H:%M")
     elif isinstance(hora, str):
-        # "08:00:00" -> "08:00"
-        # "08:00" -> "08:00"
         return hora[:5]
     else:
         return str(hora)[:5]
@@ -99,28 +255,48 @@ def obter_horarios_agendados(data_str):
     
     return []
 
-st.title("📅 Sistema de Agendamento - Capital Truck Center")
-st.markdown("---")
+# HEADER
+st.markdown("""
+<div class="header-capital">
+    <h1>🛞 CAPITAL PNEUS</h1>
+    <p>Sistema de Agendamento Online</p>
+    <p style="font-size: 0.9em; margin-top: 10px;">Revenda Autorizada Michelin & BF Goodrich</p>
+</div>
+""", unsafe_allow_html=True)
 
-menu = st.sidebar.radio("Selecione uma opção:", ["🏪 Agendar Serviço", "👨‍💼 Painel Admin"])
+menu = st.sidebar.radio("📋 Menu", ["🛞 Agendar Serviço", "👨‍💼 Painel Admin"])
 
-if menu == "🏪 Agendar Serviço":
-    st.subheader("Agende seu serviço")
+if menu == "🛞 Agendar Serviço":
+    
+    st.markdown('<div class="form-section">', unsafe_allow_html=True)
+    st.markdown("### 👤 Dados do Cliente")
     
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("### 👤 Dados do Cliente")
-        nome_cliente = st.text_input("Nome completo *", key="nome")
-        telefone = st.text_input("Telefone *", key="tel")
-        email = st.text_input("Email (opcional)", key="email")
+        nome_cliente = st.text_input("Nome completo *", key="nome", placeholder="João Silva")
+        email = st.text_input("Email (opcional)", key="email", placeholder="joao@email.com")
     
     with col2:
-        st.markdown("### 🚗 Dados do Veículo")
-        placa = st.text_input("Placa *", key="placa", max_chars=8)
-        modelo = st.text_input("Modelo *", key="modelo")
-        ano = st.number_input("Ano", min_value=2000, max_value=2025, step=1, key="ano")
+        telefone = st.text_input("Telefone *", key="tel", placeholder="(67) 99999-9999")
+        
+    st.markdown('</div>', unsafe_allow_html=True)
     
+    st.markdown('<div class="form-section">', unsafe_allow_html=True)
+    st.markdown("### 🚗 Dados do Veículo")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        placa = st.text_input("Placa *", key="placa", max_chars=8, placeholder="ABC-1234")
+    with col2:
+        modelo = st.text_input("Modelo *", key="modelo", placeholder="Iveco Truck")
+    with col3:
+        ano = st.number_input("Ano", min_value=2000, max_value=2025, step=1, key="ano", value=2020)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.markdown('<div class="form-section">', unsafe_allow_html=True)
     st.markdown("### 📅 Data e Horário")
     
     data_minima = datetime.now().date()
@@ -135,19 +311,15 @@ if menu == "🏪 Agendar Serviço":
     
     data_str = data_agendamento.strftime("%Y-%m-%d")
     
-    # Buscar horários base e agendados
     horarios_base = gerar_horarios_base(data_str)
     horarios_agendados = obter_horarios_agendados(data_str)
     
     if horarios_base:
-        st.markdown("#### 📅 Selecione um horário:")
-        st.info("🟢 Verde = Disponível | ⚫ Cinza = Reservado")
-        
-        st.divider()
+        st.markdown("#### Selecione um horário disponível:")
+        st.markdown('<div class="info-box">🟢 Verde = Disponível | ⚫ Cinza = Reservado</div>', unsafe_allow_html=True)
         
         hora_selecionada = st.session_state.get('hora_selecionada', None)
         
-        # Grid de horários com cores CORRETAS
         cols = st.columns(5)
         col_index = 0
         
@@ -157,7 +329,6 @@ if menu == "🏪 Agendar Serviço":
             
             with cols[col_index % 5]:
                 if is_agendado:
-                    # BOTÃO CINZA - DESABILITADO
                     st.button(
                         f"🚫 {hora}",
                         key=f"agend_{hora}",
@@ -165,7 +336,6 @@ if menu == "🏪 Agendar Serviço":
                         use_container_width=True
                     )
                 elif is_selecionado:
-                    # BOTÃO AZUL - SELECIONADO
                     if st.button(
                         f"✅ {hora}",
                         key=f"selecionado_{hora}",
@@ -175,7 +345,6 @@ if menu == "🏪 Agendar Serviço":
                         st.session_state['hora_selecionada'] = None
                         st.rerun()
                 else:
-                    # BOTÃO VERDE - DISPONÍVEL
                     if st.button(
                         f"⏰ {hora}",
                         key=f"disponivel_{hora}",
@@ -186,34 +355,35 @@ if menu == "🏪 Agendar Serviço":
             
             col_index += 1
         
-        st.divider()
-        
         if hora_selecionada:
             if hora_selecionada not in horarios_agendados:
-                st.success(f"✅ Horário selecionado: **{hora_selecionada}**")
+                st.markdown(f'<div class="success-message">✅ Horário selecionado: <strong>{hora_selecionada}</strong></div>', unsafe_allow_html=True)
             else:
-                st.error(f"❌ Horário {hora_selecionada} foi agendado!")
+                st.markdown(f'<div class="error-message">❌ Horário {hora_selecionada} foi agendado!</div>', unsafe_allow_html=True)
                 st.session_state['hora_selecionada'] = None
                 st.rerun()
     else:
         st.warning("⚠️ Não há horários disponíveis para esta data (domingo ou feriado)")
     
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.markdown('<div class="form-section">', unsafe_allow_html=True)
     st.markdown("### 📝 Tipo de Serviço")
     servico = st.selectbox(
         "Selecione o serviço *",
         ["Troca de Pneus", "Manutenção", "Alinhamento", "Balanceamento", "Outro"],
         key="servico"
     )
+    st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("---")
     
-    if st.button("✅ Confirmar Agendamento", use_container_width=True, type="primary"):
+    if st.button("✅ CONFIRMAR AGENDAMENTO", use_container_width=True, type="primary"):
         hora_selecionada = st.session_state.get('hora_selecionada', None)
         
         if not all([nome_cliente, telefone, placa, modelo, hora_selecionada]):
             st.error("❌ Preencha todos os campos obrigatórios!")
         else:
-            # VALIDAÇÃO 1: Verificar se horário ainda está disponível
             horarios_agendados_check1 = obter_horarios_agendados(data_str)
             
             if hora_selecionada in horarios_agendados_check1:
@@ -221,7 +391,6 @@ if menu == "🏪 Agendar Serviço":
                 st.session_state['hora_selecionada'] = None
                 st.rerun()
             else:
-                # Inserir cliente
                 query_cliente = "INSERT INTO clientes (nome, telefone, email) VALUES (%s, %s, %s) RETURNING id"
                 resultado_cliente, erro_cliente = execute_query(query_cliente, (nome_cliente, telefone, email), fetch=True, commit=True)
                 
@@ -230,7 +399,6 @@ if menu == "🏪 Agendar Serviço":
                 elif resultado_cliente:
                     cliente_id = resultado_cliente[0]['id']
                     
-                    # Inserir veículo
                     query_veiculo = "INSERT INTO veiculos (cliente_id, placa, modelo, ano) VALUES (%s, %s, %s, %s) RETURNING id"
                     resultado_veiculo, erro_veiculo = execute_query(query_veiculo, (cliente_id, placa, modelo, ano), fetch=True, commit=True)
                     
@@ -239,7 +407,6 @@ if menu == "🏪 Agendar Serviço":
                     elif resultado_veiculo:
                         veiculo_id = resultado_veiculo[0]['id']
                         
-                        # VALIDAÇÃO 2: Verificar novamente antes de agendar
                         horarios_agendados_check2 = obter_horarios_agendados(data_str)
                         
                         if hora_selecionada in horarios_agendados_check2:
@@ -247,7 +414,6 @@ if menu == "🏪 Agendar Serviço":
                             st.session_state['hora_selecionada'] = None
                             st.rerun()
                         else:
-                            # Inserir agendamento
                             query_agendamento = "INSERT INTO agendamentos (cliente_id, veiculo_id, data_agendamento, hora_agendamento, servico, status) VALUES (%s, %s, %s, %s, %s, 'confirmado')"
                             _, erro_agendamento = execute_query(query_agendamento, (cliente_id, veiculo_id, data_str, hora_selecionada, servico), fetch=False, commit=True)
                             
@@ -257,9 +423,18 @@ if menu == "🏪 Agendar Serviço":
                                 st.success(f"✅ Agendamento confirmado para {data_agendamento.strftime('%d/%m/%Y')} às {hora_selecionada}!")
                                 st.balloons()
                                 st.session_state['hora_selecionada'] = None
+    
+    st.markdown("""
+    <div class="marca-footer">
+        <p><strong>Capital Pneus e Acessórios</strong></p>
+        <p>Rua Ediberto Celestino de Oliveira, 1750 - Centro - Dourados - MS</p>
+        <p>Revenda Autorizada <span class="logo-michelin">🛞 MICHELIN</span> & <span class="logo-michelin">BF GOODRICH</span></p>
+        <p>📞 (67) 3421-1234 | 📧 contato@capitalpneus.com.br</p>
+    </div>
+    """, unsafe_allow_html=True)
 
 elif menu == "👨‍💼 Painel Admin":
-    st.subheader("Painel de Administração")
+    st.subheader("👨‍💼 Painel de Administração")
     
     senha_admin = st.text_input("Senha do admin:", type="password", key="admin_pass")
     
