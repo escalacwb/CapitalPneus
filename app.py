@@ -66,7 +66,7 @@ def gerar_horarios_base(data_str):
     return horarios
 
 def obter_horarios_agendados(data_str):
-    """Retorna lista de horários agendados"""
+    """Retorna lista de horários agendados - NORMALIZADO"""
     query = """
         SELECT DISTINCT hora_agendamento 
         FROM agendamentos 
@@ -75,7 +75,17 @@ def obter_horarios_agendados(data_str):
     resultado, _ = execute_query(query, (data_str,), fetch=True)
     
     if resultado:
-        return [row['hora_agendamento'] for row in resultado]
+        # NORMALIZAR: Converter para formato HH:MM
+        agendados = []
+        for row in resultado:
+            hora = row['hora_agendamento']
+            # Se vier como "08:00:00", converte para "08:00"
+            if isinstance(hora, str) and len(hora) >= 5:
+                hora_normalizada = hora[:5]
+            else:
+                hora_normalizada = str(hora)
+            agendados.append(hora_normalizada)
+        return agendados
     
     return []
 
@@ -120,52 +130,76 @@ if menu == "🏪 Agendar Serviço":
     horarios_agendados = obter_horarios_agendados(data_str)
     
     if horarios_base:
-        st.markdown("#### 📅 Horários Disponíveis:")
-        
-        # MOSTRAR VISUALMENTE quais estão agendados
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("**✅ Disponíveis:**")
-            disponiveis = [h for h in horarios_base if h not in horarios_agendados]
-            for h in disponiveis:
-                st.write(f"🟢 {h}")
-        
-        with col2:
-            st.markdown("**❌ Reservados:**")
-            for h in horarios_agendados:
-                st.write(f"⚫ {h}")
+        st.markdown("#### 📅 Selecione um horário:")
+        st.info("🟢 Verde = Disponível | ⚫ Cinza = Reservado")
         
         st.divider()
         
-        # SELECTBOX com APENAS horários disponíveis
-        st.markdown("#### Selecione um horário disponível:")
+        hora_selecionada = st.session_state.get('hora_selecionada', None)
         
-        if disponiveis:
-            hora_selecionada = st.selectbox(
-                "Horário *",
-                disponiveis,
-                key="selectbox_horario",
-                label_visibility="collapsed"
-            )
-        else:
-            st.error("❌ Não há horários disponíveis para esta data")
-            hora_selecionada = None
+        # Grid de horários com cores CORRETAS
+        cols = st.columns(5)
+        col_index = 0
+        
+        for hora in horarios_base:
+            is_agendado = hora in horarios_agendados
+            is_selecionado = hora == hora_selecionada
+            
+            with cols[col_index % 5]:
+                if is_agendado:
+                    # BOTÃO CINZA - DESABILITADO
+                    st.button(
+                        f"🚫 {hora}",
+                        key=f"agend_{hora}",
+                        disabled=True,
+                        use_container_width=True
+                    )
+                elif is_selecionado:
+                    # BOTÃO AZUL - SELECIONADO
+                    if st.button(
+                        f"✅ {hora}",
+                        key=f"selecionado_{hora}",
+                        use_container_width=True,
+                        type="primary"
+                    ):
+                        st.session_state['hora_selecionada'] = None
+                        st.rerun()
+                else:
+                    # BOTÃO VERDE - DISPONÍVEL
+                    if st.button(
+                        f"⏰ {hora}",
+                        key=f"disponivel_{hora}",
+                        use_container_width=True
+                    ):
+                        st.session_state['hora_selecionada'] = hora
+                        st.rerun()
+            
+            col_index += 1
+        
+        st.divider()
+        
+        if hora_selecionada:
+            if hora_selecionada not in horarios_agendados:
+                st.success(f"✅ Horário selecionado: **{hora_selecionada}**")
+            else:
+                st.error(f"❌ Horário {hora_selecionada} foi agendado!")
+                st.session_state['hora_selecionada'] = None
+                st.rerun()
     else:
         st.warning("⚠️ Não há horários disponíveis para esta data (domingo ou feriado)")
-        hora_selecionada = None
     
     st.markdown("### 📝 Tipo de Serviço")
     servico = st.selectbox(
         "Selecione o serviço *",
         ["Troca de Pneus", "Manutenção", "Alinhamento", "Balanceamento", "Outro"],
-        key="servico",
-        label_visibility="collapsed"
+        key="servico"
     )
     
     st.markdown("---")
     
     if st.button("✅ Confirmar Agendamento", use_container_width=True, type="primary"):
+        hora_selecionada = st.session_state.get('hora_selecionada', None)
+        
         if not all([nome_cliente, telefone, placa, modelo, hora_selecionada]):
             st.error("❌ Preencha todos os campos obrigatórios!")
         else:
@@ -174,6 +208,7 @@ if menu == "🏪 Agendar Serviço":
             
             if hora_selecionada in horarios_agendados_check1:
                 st.error(f"❌ Desculpe! Horário {hora_selecionada} já foi agendado por outro cliente!")
+                st.session_state['hora_selecionada'] = None
                 st.rerun()
             else:
                 # Inserir cliente
@@ -199,6 +234,7 @@ if menu == "🏪 Agendar Serviço":
                         
                         if hora_selecionada in horarios_agendados_check2:
                             st.error("❌ Alguém agendou este horário agora!")
+                            st.session_state['hora_selecionada'] = None
                             st.rerun()
                         else:
                             # Inserir agendamento
@@ -210,6 +246,7 @@ if menu == "🏪 Agendar Serviço":
                             else:
                                 st.success(f"✅ Agendamento confirmado para {data_agendamento.strftime('%d/%m/%Y')} às {hora_selecionada}!")
                                 st.balloons()
+                                st.session_state['hora_selecionada'] = None
 
 elif menu == "👨‍💼 Painel Admin":
     st.subheader("Painel de Administração")
