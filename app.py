@@ -11,18 +11,35 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Conectar ao NeonDB
+# Conectar ao NeonDB com cache
+@st.cache_resource
+def get_db_connection():
+    """Cache de conexão com o banco"""
+    try:
+        conn = psycopg2.connect(
+            host=st.secrets.get("NEON_HOST", "ep-wispy-smoke-ac9dimqg-pooler.sa-east-1.aws.neon.tech"),
+            user=st.secrets.get("NEON_USER", "neondb_owner"),
+            password=st.secrets.get("NEON_PASSWORD", "npg_l2IOvsnEW1QZ"),
+            database="neondb",
+            sslmode="require",
+            connect_timeout=5
+        )
+        return conn
+    except Exception as e:
+        st.error(f"❌ Erro ao conectar: {str(e)}")
+        return None
+
 def execute_query(query, params=None, fetch=True):
-    """Executa query no banco com tratamento melhorado"""
+    """Executa query no banco"""
     conn = None
     try:
         conn = psycopg2.connect(
-            host = st.secrets["NEON_HOST"],
-            user = st.secrets["NEON_USER"],
-            password= st.secrets["NEON_PASSWORD"],
+            host=st.secrets.get("NEON_HOST", "ep-wispy-smoke-ac9dimqg-pooler.sa-east-1.aws.neon.tech"),
+            user=st.secrets.get("NEON_USER", "neondb_owner"),
+            password=st.secrets.get("NEON_PASSWORD", "npg_l2IOvsnEW1QZ"),
             database="neondb",
             sslmode="require",
-            connect_timeout=10
+            connect_timeout=5
         )
         
         cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -37,11 +54,8 @@ def execute_query(query, params=None, fetch=True):
         cur.close()
         return result
         
-    except psycopg2.OperationalError as e:
-        st.error(f"❌ Erro de conexão: {str(e)}")
-        return None
     except Exception as e:
-        st.error(f"❌ Erro no banco: {str(e)}")
+        st.error(f"❌ Erro: {str(e)}")
         return None
     finally:
         if conn:
@@ -70,24 +84,9 @@ def gerar_horarios_disponiveis(data_str):
     
     return horarios
 
-def atualizar_horarios_disponiveis(data_str):
-    """Garante que os horários estão no banco para a data especificada"""
-    data = datetime.strptime(data_str, "%Y-%m-%d").date()
-    horarios = gerar_horarios_disponiveis(data_str)
-    
-    if not horarios:
-        return
-    
-    for hora in horarios:
-        query = """
-            INSERT INTO horarios_disponiveis (data, hora, status)
-            VALUES (%s, %s, 'disponivel')
-            ON CONFLICT (data, hora) DO NOTHING
-        """
-        execute_query(query, (data, hora), fetch=False)
-
+@st.cache_data(ttl=3600)
 def obter_horarios_com_status(data_str):
-    """Obtém todos os horários da data com seus status"""
+    """Obtém todos os horários da data com seus status - COM CACHE"""
     data = datetime.strptime(data_str, "%Y-%m-%d").date()
     query = """
         SELECT hora, status FROM horarios_disponiveis
@@ -138,9 +137,11 @@ if menu == "🏪 Agendar Serviço":
     )
     
     data_str = data_agendamento.strftime("%Y-%m-%d")
-    atualizar_horarios_disponiveis(data_str)
     
-    horarios_status = obter_horarios_com_status(data_str)
+    # NÃO chama atualizar_horarios_disponiveis - os horários já estão no banco!
+    
+    with st.spinner("⏳ Carregando horários disponíveis..."):
+        horarios_status = obter_horarios_com_status(data_str)
     
     if horarios_status:
         st.markdown("#### 📅 Selecione um horário:")
@@ -264,6 +265,7 @@ if menu == "🏪 Agendar Serviço":
                         st.success(f"✅ Agendamento confirmado para {data_agendamento.strftime('%d/%m/%Y')} às {hora_selecionada}")
                         st.balloons()
                         st.session_state['hora_selecionada'] = None
+                        st.cache_data.clear()
                     else:
                         st.error("❌ Erro ao agendar - horário não disponível")
                 else:
@@ -335,6 +337,7 @@ elif menu == "👨‍💼 Painel Admin":
                         execute_query(query_liberar, (horario_id,), fetch=False)
                     
                     st.success("✅ Agendamento cancelado!")
+                    st.cache_data.clear()
             else:
                 st.info("Nenhum agendamento para cancelar")
         
