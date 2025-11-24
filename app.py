@@ -10,111 +10,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.markdown("""
-<style>
-.horario-grid {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 10px;
-    margin: 20px 0;
-}
-
-.horario-container {
-    display: flex;
-    justify-content: center;
-}
-
-.horario-btn {
-    width: 100%;
-    padding: 15px;
-    border: none;
-    border-radius: 8px;
-    font-weight: bold;
-    font-size: 14px;
-    transition: all 0.3s ease;
-    cursor: pointer;
-    text-align: center;
-    font-family: Arial, sans-serif;
-}
-
-.horario-disponivel {
-    background-color: #10B981;
-    color: white;
-}
-
-.horario-disponivel:hover {
-    background-color: #059669;
-    transform: scale(1.05);
-    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-}
-
-.horario-agendado {
-    background-color: #9CA3AF;
-    color: #4B5563;
-    cursor: not-allowed;
-    opacity: 0.6;
-}
-
-.horario-agendado:hover {
-    background-color: #9CA3AF;
-    transform: none;
-    box-shadow: none;
-    cursor: not-allowed;
-}
-
-.horario-selecionado {
-    background-color: #3B82F6;
-    color: white;
-    border: 2px solid #1E40AF;
-    box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
-}
-
-.horario-selecionado:hover {
-    background-color: #1D4ED8;
-}
-
-.legenda-item {
-    display: inline-block;
-    margin: 0 15px 10px 0;
-    padding: 8px 12px;
-    border-radius: 6px;
-    font-weight: bold;
-    font-size: 14px;
-}
-
-.legenda-verde {
-    background-color: #10B981;
-    color: white;
-}
-
-.legenda-azul {
-    background-color: #3B82F6;
-    color: white;
-}
-
-.legenda-cinza {
-    background-color: #9CA3AF;
-    color: white;
-}
-
-@media (max-width: 768px) {
-    .horario-grid {
-        grid-template-columns: repeat(3, 1fr);
-    }
-}
-</style>
-
-<script>
-function selecionarHorario(hora) {
-    window.parent.postMessage({type: 'streamlit:setComponentValue', value: hora}, '*');
-}
-
-function deselecionarHorario() {
-    window.parent.postMessage({type: 'streamlit:setComponentValue', value: null}, '*');
-}
-</script>
-""", unsafe_allow_html=True)
-
 def execute_query(query, params=None, fetch=True, commit=False):
     """Executa query no banco"""
     conn = None
@@ -247,56 +142,57 @@ if menu == "🏪 Agendar Serviço":
     
     if horarios_status:
         st.markdown("#### 📅 Selecione um horário:")
-        
-        st.markdown(
-            '<div><span class="legenda-item legenda-verde">🟢 Verde = Disponível</span>'
-            '<span class="legenda-item legenda-cinza">⚫ Cinza = Reservado</span>'
-            '<span class="legenda-item legenda-azul">🔵 Azul = Selecionado</span></div>',
-            unsafe_allow_html=True
-        )
+        st.info("🟢 Verde = Disponível | ⚫ Cinza = Reservado | 🔵 Azul = Selecionado")
         
         st.divider()
         
         hora_selecionada = st.session_state.get('hora_selecionada', None)
         
-        # Renderizar grid de horários com HTML puro
-        html_grid = '<div class="horario-grid">'
+        # Exibir horários em grid usando selectbox
+        horarios_ordenados = sorted(horarios_status.keys())
         
-        for hora in sorted(horarios_status.keys()):
+        # Criar colunas
+        cols = st.columns(5)
+        col_index = 0
+        
+        for hora in horarios_ordenados:
             status = horarios_status[hora]
             
-            if status == 'agendado':
-                classe = 'horario-agendado'
-                icone = '🚫'
-                html_grid += f'<div class="horario-container"><button class="horario-btn {classe}" disabled>{icone} {hora}</button></div>'
-            elif hora == hora_selecionada:
-                classe = 'horario-selecionado'
-                icone = '✅'
-                html_grid += f'<div class="horario-container"><button class="horario-btn {classe}" onclick="deselecionarHorario()">{icone} {hora}</button></div>'
-            else:
-                classe = 'horario-disponivel'
-                icone = '⏰'
-                html_grid += f'<div class="horario-container"><button class="horario-btn {classe}" onclick="selecionarHorario(\'{hora}\')">{icone} {hora}</button></div>'
-        
-        html_grid += '</div>'
-        st.markdown(html_grid, unsafe_allow_html=True)
-        
-        st.divider()
-        
-        # Campo oculto para sincronizar com Streamlit
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            if st.button("🔄 Atualizar", use_container_width=True, key="refresh"):
-                st.rerun()
-        
-        with col2:
-            if hora_selecionada:
-                if st.button("❌ Desselecionar", use_container_width=True, key="desel"):
-                    st.session_state['hora_selecionada'] = None
-                    st.rerun()
-        
-        with col3:
-            pass
+            with cols[col_index % 5]:
+                if status == 'agendado':
+                    # Botão cinza - DESABILITADO
+                    st.button(
+                        f"🚫 {hora}",
+                        key=f"btn_agende_{hora}",
+                        disabled=True,
+                        use_container_width=True
+                    )
+                elif hora == hora_selecionada:
+                    # Botão azul - SELECIONADO
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        if st.button(
+                            f"✅ {hora}",
+                            key=f"btn_selecionado_{hora}",
+                            use_container_width=True,
+                            type="primary"
+                        ):
+                            st.session_state['hora_selecionada'] = None
+                            st.rerun()
+                else:
+                    # Botão verde - DISPONÍVEL
+                    if st.button(
+                        f"⏰ {hora}",
+                        key=f"btn_disponivel_{hora}",
+                        use_container_width=True
+                    ):
+                        if verificar_horario_disponivel(data_str, hora):
+                            st.session_state['hora_selecionada'] = hora
+                            st.rerun()
+                        else:
+                            st.error(f"❌ Horário {hora} foi agendado! Escolha outro.")
+            
+            col_index += 1
         
         st.divider()
         
