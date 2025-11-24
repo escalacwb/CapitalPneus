@@ -99,9 +99,8 @@ def gerar_horarios_disponiveis(data_str):
     
     return horarios
 
-@st.cache_data(ttl=3600)
 def obter_horarios_com_status(data_str):
-    """Obtém todos os horários da data com seus status - COM CACHE"""
+    """Obtém todos os horários da data com seus status - SEM CACHE"""
     data = datetime.strptime(data_str, "%Y-%m-%d").date()
     query = """
         SELECT hora, status FROM horarios_disponiveis
@@ -153,8 +152,8 @@ if menu == "🏪 Agendar Serviço":
     
     data_str = data_agendamento.strftime("%Y-%m-%d")
     
-    with st.spinner("⏳ Carregando horários disponíveis..."):
-        horarios_status = obter_horarios_com_status(data_str)
+    # Carregar horários SEM cache - sempre atualizado
+    horarios_status = obter_horarios_com_status(data_str)
     
     if horarios_status:
         st.markdown("#### 📅 Selecione um horário:")
@@ -293,7 +292,6 @@ if menu == "🏪 Agendar Serviço":
                                 st.success(f"✅ Agendamento confirmado para {data_agendamento.strftime('%d/%m/%Y')} às {hora_selecionada}")
                                 st.balloons()
                                 st.session_state['hora_selecionada'] = None
-                                st.cache_data.clear()
                     else:
                         st.error("❌ Erro ao agendar - horário não disponível")
                 else:
@@ -366,7 +364,6 @@ elif menu == "👨‍💼 Painel Admin":
                             execute_query(query_liberar, (horario_id,), fetch=False, commit=True)
                         
                         st.success("✅ Agendamento cancelado!")
-                        st.cache_data.clear()
                     else:
                         st.error(f"❌ Erro ao cancelar: {erro_cancel}")
             else:
