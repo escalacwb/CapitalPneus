@@ -103,6 +103,16 @@ st.markdown("""
     }
 }
 </style>
+
+<script>
+function selecionarHorario(hora) {
+    window.parent.postMessage({type: 'streamlit:setComponentValue', value: hora}, '*');
+}
+
+function deselecionarHorario() {
+    window.parent.postMessage({type: 'streamlit:setComponentValue', value: null}, '*');
+}
+</script>
 """, unsafe_allow_html=True)
 
 def execute_query(query, params=None, fetch=True, commit=False):
@@ -262,42 +272,31 @@ if menu == "🏪 Agendar Serviço":
             elif hora == hora_selecionada:
                 classe = 'horario-selecionado'
                 icone = '✅'
-                html_grid += f'<div class="horario-container"><button class="horario-btn {classe}">{icone} {hora}</button></div>'
+                html_grid += f'<div class="horario-container"><button class="horario-btn {classe}" onclick="deselecionarHorario()">{icone} {hora}</button></div>'
             else:
                 classe = 'horario-disponivel'
                 icone = '⏰'
-                html_grid += f'<div class="horario-container"><button class="horario-btn {classe}">{icone} {hora}</button></div>'
+                html_grid += f'<div class="horario-container"><button class="horario-btn {classe}" onclick="selecionarHorario(\'{hora}\')">{icone} {hora}</button></div>'
         
         html_grid += '</div>'
         st.markdown(html_grid, unsafe_allow_html=True)
         
         st.divider()
         
-        # Linha de botões ocultos Streamlit para capturar cliques
-        cols = st.columns(len(horarios_status))
-        col_idx = 0
+        # Campo oculto para sincronizar com Streamlit
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button("🔄 Atualizar", use_container_width=True, key="refresh"):
+                st.rerun()
         
-        for hora in sorted(horarios_status.keys()):
-            status = horarios_status[hora]
-            
-            with cols[col_idx]:
-                if status == 'agendado':
-                    # Botão invisível para bloquear
-                    st.button(f"X", key=f"btn_block_{hora}", disabled=True, label_visibility="collapsed")
-                elif hora == hora_selecionada:
-                    if st.button(f"Desselecionar", key=f"btn_sel_{hora}", label_visibility="collapsed"):
-                        st.session_state['hora_selecionada'] = None
-                        st.rerun()
-                else:
-                    if st.button(f"Selecionar", key=f"btn_avail_{hora}", label_visibility="collapsed"):
-                        if verificar_horario_disponivel(data_str, hora):
-                            st.session_state['hora_selecionada'] = hora
-                            st.rerun()
-                        else:
-                            st.error(f"❌ Horário {hora} foi agendado! Escolha outro.")
-                            st.session_state['hora_selecionada'] = None
-            
-            col_idx += 1
+        with col2:
+            if hora_selecionada:
+                if st.button("❌ Desselecionar", use_container_width=True, key="desel"):
+                    st.session_state['hora_selecionada'] = None
+                    st.rerun()
+        
+        with col3:
+            pass
         
         st.divider()
         
