@@ -21,7 +21,7 @@ def execute_query(query, params=None, fetch=True):
             user = st.secrets["NEON_USER"],
             password= st.secrets["NEON_PASSWORD"],
             database="neondb",
-            sslmode="require"
+            sslmode="require",
             connect_timeout=10
         )
         
