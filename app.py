@@ -37,9 +37,9 @@ div[data-testid="stButtonContainer"] > button[kind="primary"]:hover {
 </style>
 """, unsafe_allow_html=True)
 
-# Conectar ao NeonDB
-def execute_query(query, params=None, fetch=True):
-    """Executa query no banco"""
+# Conectar ao NeonDB com melhor tratamento de erro
+def execute_query(query, params=None, fetch=True, commit=False):
+    """Executa query no banco com commit opcional"""
     conn = None
     try:
         conn = psycopg2.connect(
@@ -48,7 +48,8 @@ def execute_query(query, params=None, fetch=True):
             password=st.secrets.get("NEON_PASSWORD", "npg_l2IOvsnEW1QZ"),
             database="neondb",
             sslmode="require",
-            connect_timeout=5
+            connect_timeout=5,
+            autocommit=False
         )
         
         cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -57,15 +58,20 @@ def execute_query(query, params=None, fetch=True):
         if fetch:
             result = cur.fetchall()
         else:
-            conn.commit()
             result = None
         
-        cur.close()
-        return result
+        if commit or not fetch:
+            conn.commit()
         
+        cur.close()
+        return result, None
+        
+    except psycopg2.Error as e:
+        error_msg = f"Erro SQL: {str(e)}"
+        return None, error_msg
     except Exception as e:
-        st.error(f"❌ Erro: {str(e)}")
-        return None
+        error_msg = f"Erro: {str(e)}"
+        return None, error_msg
     finally:
         if conn:
             conn.close()
@@ -102,7 +108,7 @@ def obter_horarios_com_status(data_str):
         WHERE data = %s
         ORDER BY hora
     """
-    result = execute_query(query, (data,))
+    result, error = execute_query(query, (data,), fetch=True, commit=False)
     return result if result else []
 
 # ======================== INTERFACE PRINCIPAL ========================
@@ -230,9 +236,11 @@ if menu == "🏪 Agendar Serviço":
                 VALUES (%s, %s, %s)
                 RETURNING id
             """
-            resultado_cliente = execute_query(query_cliente, (nome_cliente, telefone, email), fetch=True)
+            resultado_cliente, erro_cliente = execute_query(query_cliente, (nome_cliente, telefone, email), fetch=True, commit=True)
             
-            if resultado_cliente:
+            if erro_cliente:
+                st.error(f"❌ Erro ao cadastrar cliente: {erro_cliente}")
+            elif resultado_cliente:
                 cliente_id = resultado_cliente[0]['id']
                 
                 # Inserir veículo
@@ -241,9 +249,11 @@ if menu == "🏪 Agendar Serviço":
                     VALUES (%s, %s, %s, %s)
                     RETURNING id
                 """
-                resultado_veiculo = execute_query(query_veiculo, (cliente_id, placa, modelo, ano), fetch=True)
+                resultado_veiculo, erro_veiculo = execute_query(query_veiculo, (cliente_id, placa, modelo, ano), fetch=True, commit=True)
                 
-                if resultado_veiculo:
+                if erro_veiculo:
+                    st.error(f"❌ Erro ao cadastrar veículo: {erro_veiculo}")
+                elif resultado_veiculo:
                     veiculo_id = resultado_veiculo[0]['id']
                     
                     # Obter ID do horário
@@ -252,9 +262,11 @@ if menu == "🏪 Agendar Serviço":
                         WHERE data = %s AND hora = %s AND status = 'disponivel'
                         LIMIT 1
                     """
-                    resultado_horario = execute_query(query_horario, (data_str, hora_selecionada), fetch=True)
+                    resultado_horario, erro_horario = execute_query(query_horario, (data_str, hora_selecionada), fetch=True, commit=False)
                     
-                    if resultado_horario:
+                    if erro_horario:
+                        st.error(f"❌ Erro ao obter horário: {erro_horario}")
+                    elif resultado_horario:
                         horario_id = resultado_horario[0]['id']
                         
                         # Inserir agendamento
@@ -262,20 +274,26 @@ if menu == "🏪 Agendar Serviço":
                             INSERT INTO agendamentos (cliente_id, veiculo_id, horario_id, data_agendamento, hora_agendamento, servico, status)
                             VALUES (%s, %s, %s, %s, %s, %s, 'confirmado')
                         """
-                        execute_query(query_agendamento, (cliente_id, veiculo_id, horario_id, data_str, hora_selecionada, servico), fetch=False)
+                        _, erro_agendamento = execute_query(query_agendamento, (cliente_id, veiculo_id, horario_id, data_str, hora_selecionada, servico), fetch=False, commit=True)
                         
-                        # Atualizar status do horário
-                        query_update_horario = """
-                            UPDATE horarios_disponiveis
-                            SET status = 'agendado'
-                            WHERE id = %s
-                        """
-                        execute_query(query_update_horario, (horario_id,), fetch=False)
-                        
-                        st.success(f"✅ Agendamento confirmado para {data_agendamento.strftime('%d/%m/%Y')} às {hora_selecionada}")
-                        st.balloons()
-                        st.session_state['hora_selecionada'] = None
-                        st.cache_data.clear()
+                        if erro_agendamento:
+                            st.error(f"❌ Erro ao criar agendamento: {erro_agendamento}")
+                        else:
+                            # Atualizar status do horário
+                            query_update_horario = """
+                                UPDATE horarios_disponiveis
+                                SET status = 'agendado'
+                                WHERE id = %s
+                            """
+                            _, erro_update = execute_query(query_update_horario, (horario_id,), fetch=False, commit=True)
+                            
+                            if erro_update:
+                                st.error(f"❌ Erro ao atualizar horário: {erro_update}")
+                            else:
+                                st.success(f"✅ Agendamento confirmado para {data_agendamento.strftime('%d/%m/%Y')} às {hora_selecionada}")
+                                st.balloons()
+                                st.session_state['hora_selecionada'] = None
+                                st.cache_data.clear()
                     else:
                         st.error("❌ Erro ao agendar - horário não disponível")
                 else:
@@ -311,7 +329,7 @@ elif menu == "👨‍💼 Painel Admin":
                 WHERE a.status = 'confirmado'
                 ORDER BY a.data_agendamento, a.hora_agendamento
             """
-            agendamentos = execute_query(query)
+            agendamentos, erro = execute_query(query, fetch=True)
             
             if agendamentos:
                 st.dataframe(agendamentos, use_container_width=True)
@@ -326,7 +344,7 @@ elif menu == "👨‍💼 Painel Admin":
                 WHERE status = 'confirmado'
                 ORDER BY data_agendamento DESC
             """
-            agendamentos = execute_query(query)
+            agendamentos, erro = execute_query(query, fetch=True)
             
             if agendamentos:
                 opcoes = [f"{a['data_agendamento']} às {a['hora_agendamento']}" for a in agendamentos]
@@ -337,17 +355,20 @@ elif menu == "👨‍💼 Painel Admin":
                     agendamento_id = agendamentos[idx]['id']
                     
                     query_cancel = "UPDATE agendamentos SET status = 'cancelado' WHERE id = %s"
-                    execute_query(query_cancel, (agendamento_id,), fetch=False)
+                    _, erro_cancel = execute_query(query_cancel, (agendamento_id,), fetch=False, commit=True)
                     
-                    query_horario_id = "SELECT horario_id FROM agendamentos WHERE id = %s"
-                    result = execute_query(query_horario_id, (agendamento_id,))
-                    if result:
-                        horario_id = result[0]['horario_id']
-                        query_liberar = "UPDATE horarios_disponiveis SET status = 'disponivel' WHERE id = %s"
-                        execute_query(query_liberar, (horario_id,), fetch=False)
-                    
-                    st.success("✅ Agendamento cancelado!")
-                    st.cache_data.clear()
+                    if not erro_cancel:
+                        query_horario_id = "SELECT horario_id FROM agendamentos WHERE id = %s"
+                        result, _ = execute_query(query_horario_id, (agendamento_id,), fetch=True)
+                        if result:
+                            horario_id = result[0]['horario_id']
+                            query_liberar = "UPDATE horarios_disponiveis SET status = 'disponivel' WHERE id = %s"
+                            execute_query(query_liberar, (horario_id,), fetch=False, commit=True)
+                        
+                        st.success("✅ Agendamento cancelado!")
+                        st.cache_data.clear()
+                    else:
+                        st.error(f"❌ Erro ao cancelar: {erro_cancel}")
             else:
                 st.info("Nenhum agendamento para cancelar")
         
@@ -355,7 +376,7 @@ elif menu == "👨‍💼 Painel Admin":
             st.markdown("### Estatísticas")
             
             query_total = "SELECT COUNT(*) as total FROM agendamentos WHERE status = 'confirmado'"
-            total_result = execute_query(query_total)
+            total_result, _ = execute_query(query_total, fetch=True)
             total = total_result[0]['total'] if total_result else 0
             
             query_servicos = """
@@ -364,7 +385,7 @@ elif menu == "👨‍💼 Painel Admin":
                 WHERE status = 'confirmado'
                 GROUP BY servico
             """
-            servicos = execute_query(query_servicos)
+            servicos, _ = execute_query(query_servicos, fetch=True)
             
             col1, col2 = st.columns(2)
             with col1:
@@ -372,7 +393,7 @@ elif menu == "👨‍💼 Painel Admin":
             
             with col2:
                 query_clientes = "SELECT COUNT(DISTINCT cliente_id) as total FROM agendamentos"
-                clientes_result = execute_query(query_clientes)
+                clientes_result, _ = execute_query(query_clientes, fetch=True)
                 clientes = clientes_result[0]['total'] if clientes_result else 0
                 st.metric("Clientes Únicos", clientes)
             
