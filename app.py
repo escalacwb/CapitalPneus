@@ -11,50 +11,14 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS customizado para os blocos de horários
+# CSS customizado para os botões de horários
 st.markdown("""
 <style>
-.horario-container {
+.horario-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-    gap: 10px;
-    margin-top: 20px;
-}
-
-.horario-bloco {
-    padding: 12px;
-    border-radius: 8px;
-    text-align: center;
-    font-weight: bold;
-    font-size: 14px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    border: 2px solid transparent;
-}
-
-.horario-disponivel {
-    background-color: #10B981;
-    color: white;
-}
-
-.horario-disponivel:hover {
-    background-color: #059669;
-    transform: scale(1.05);
-    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-}
-
-.horario-reservado {
-    background-color: #D1D5DB;
-    color: #6B7280;
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-.horario-selecionado {
-    background-color: #3B82F6;
-    color: white;
-    border: 2px solid #1E40AF;
-    box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    margin: 15px 0;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -163,29 +127,27 @@ if menu == "🏪 Agendar Serviço":
     
     with col1:
         st.markdown("### 👤 Dados do Cliente")
-        nome_cliente = st.text_input("Nome completo *", placeholder="João Silva")
-        telefone = st.text_input("Telefone *", placeholder="(67) 99999-9999")
-        email = st.text_input("Email (opcional)", placeholder="joao@email.com")
+        nome_cliente = st.text_input("Nome completo *", placeholder="João Silva", key="nome")
+        telefone = st.text_input("Telefone *", placeholder="(67) 99999-9999", key="tel")
+        email = st.text_input("Email (opcional)", placeholder="joao@email.com", key="email")
     
     with col2:
         st.markdown("### 🚗 Dados do Veículo")
-        placa = st.text_input("Placa *", placeholder="ABC-1234", max_chars=8)
-        modelo = st.text_input("Modelo *", placeholder="Iveco Truck")
-        ano = st.number_input("Ano", min_value=2000, max_value=2025, step=1)
+        placa = st.text_input("Placa *", placeholder="ABC-1234", max_chars=8, key="placa")
+        modelo = st.text_input("Modelo *", placeholder="Iveco Truck", key="modelo")
+        ano = st.number_input("Ano", min_value=2000, max_value=2025, step=1, key="ano")
     
     st.markdown("### 📅 Data e Horário")
     
-    col1, col2 = st.columns(2)
+    data_minima = datetime.now().date()
+    data_maxima = data_minima + timedelta(days=30)
     
-    with col1:
-        data_minima = datetime.now().date()
-        data_maxima = data_minima + timedelta(days=30)
-        
-        data_agendamento = st.date_input(
-            "Selecione a data *",
-            min_value=data_minima,
-            max_value=data_maxima
-        )
+    data_agendamento = st.date_input(
+        "Selecione a data *",
+        min_value=data_minima,
+        max_value=data_maxima,
+        key="data_input"
+    )
     
     data_str = data_agendamento.strftime("%Y-%m-%d")
     atualizar_horarios_disponiveis(data_str)
@@ -193,60 +155,66 @@ if menu == "🏪 Agendar Serviço":
     horarios_status = obter_horarios_com_status(data_str)
     
     if horarios_status:
-        st.markdown("#### Selecione o horário:")
+        st.markdown("#### Horários Disponíveis:")
         
-        # Criar grid de horários com CSS
-        cols = st.columns(5)
+        # Separar disponíveis e reservados
+        horarios_disponiveis = [h['hora'] for h in horarios_status if h['status'] == 'disponivel']
+        horarios_reservados = [h['hora'] for h in horarios_status if h['status'] == 'agendado']
+        
+        # Mostrar legenda
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("🟢 **Verde** = Disponível")
+        with col2:
+            st.write("⚫ **Cinza** = Reservado")
+        
+        # Criar grid de botões para horários disponíveis
+        num_colunas = 5
         hora_selecionada = st.session_state.get('hora_selecionada', None)
         
-        html_blocos = '<div class="horario-container">'
-        for horario_data in horarios_status:
-            hora = horario_data['hora']
-            status = horario_data['status']
-            
-            if status == 'disponivel':
-                classe = 'horario-disponivel'
-                if hora == hora_selecionada:
-                    classe = 'horario-selecionado'
-            else:
-                classe = 'horario-reservado'
-            
-            html_blocos += f'<div class="horario-bloco {classe}" onclick="selectHour(\'{hora}\')">{hora}</div>'
+        st.markdown("**Clique no horário desejado:**")
         
-        html_blocos += '</div>'
-        st.markdown(html_blocos, unsafe_allow_html=True)
+        for i in range(0, len(horarios_disponiveis), num_colunas):
+            cols = st.columns(num_colunas)
+            for j, col in enumerate(cols):
+                if i + j < len(horarios_disponiveis):
+                    hora = horarios_disponiveis[i + j]
+                    
+                    # Determinar cor do botão
+                    if hora == hora_selecionada:
+                        botao_tipo = "primary"
+                        label = f"✅ {hora}"
+                    else:
+                        botao_tipo = "secondary"
+                        label = f"⏰ {hora}"
+                    
+                    if col.button(label, key=f"btn_disp_{hora}", use_container_width=True, type=botao_tipo):
+                        st.session_state['hora_selecionada'] = hora
+                        st.rerun()
         
-        # Usar botões para seleção (alternativa ao JavaScript)
-        st.markdown("**Ou clique no horário abaixo:**")
-        
-        horarios_disponiveis = [h['hora'] for h in horarios_status if h['status'] == 'disponivel']
-        
-        if horarios_disponiveis:
-            # Criar botões em grid
-            num_colunas = 5
-            for i in range(0, len(horarios_disponiveis), num_colunas):
+        # Mostrar horários reservados como botões desabilitados
+        if horarios_reservados:
+            st.markdown("**Horários já reservados:**")
+            for i in range(0, len(horarios_reservados), num_colunas):
                 cols = st.columns(num_colunas)
                 for j, col in enumerate(cols):
-                    if i + j < len(horarios_disponiveis):
-                        hora = horarios_disponiveis[i + j]
-                        if col.button(f"⏰ {hora}", key=f"btn_{hora}", use_container_width=True):
-                            st.session_state['hora_selecionada'] = hora
-                            st.rerun()
-            
-            hora_selecionada = st.session_state.get('hora_selecionada', None)
-            if hora_selecionada:
-                st.success(f"✅ Horário selecionado: **{hora_selecionada}**")
-        else:
-            st.warning("⚠️ Não há horários disponíveis para esta data")
-            hora_selecionada = None
+                    if i + j < len(horarios_reservados):
+                        hora = horarios_reservados[i + j]
+                        col.button(f"🚫 {hora}", key=f"btn_reserv_{hora}", use_container_width=True, disabled=True)
+        
+        # Mostrar seleção atual
+        hora_selecionada = st.session_state.get('hora_selecionada', None)
+        if hora_selecionada:
+            st.success(f"✅ Horário selecionado: **{hora_selecionada}**")
     else:
-        st.warning("⚠️ Não há horários disponíveis para esta data")
+        st.warning("⚠️ Não há horários disponíveis para esta data (domingo ou feriado)")
         hora_selecionada = None
     
     st.markdown("### 📝 Tipo de Serviço")
     servico = st.selectbox(
         "Selecione o serviço *",
-        ["Troca de Pneus", "Manutenção", "Alinhamento", "Balanceamento", "Outro"]
+        ["Troca de Pneus", "Manutenção", "Alinhamento", "Balanceamento", "Outro"],
+        key="servico"
     )
     
     st.markdown("---")
@@ -318,7 +286,7 @@ if menu == "🏪 Agendar Serviço":
 elif menu == "👨‍💼 Painel Admin":
     st.subheader("Painel de Administração")
     
-    senha_admin = st.text_input("Senha do admin:", type="password")
+    senha_admin = st.text_input("Senha do admin:", type="password", key="admin_pass")
     
     if senha_admin == "admin123":
         admin_tab = st.tabs(["📋 Agendamentos", "🗑️ Cancelar", "📊 Estatísticas"])
