@@ -17,9 +17,9 @@ st.set_page_config(
 @st.cache_resource
 def get_db_connection():
     conn = psycopg2.connect(
-        host="ep-wispy-smoke-ac9dimqg-pooler.sa-east-1.aws.neon.tech",
-        user="neondb_owner",
-        password="npg_l2IOvsnEW1QZ",
+        host = st.secrets["NEON_HOST"],
+        user = st.secrets["NEON_USER"],
+        password= st.secrets["NEON_PASSWORD"],
         database="neondb",
         sslmode="require"
     )
