@@ -33,35 +33,40 @@ st.markdown("""
 }
 
 .horario-disponivel {
-    background-color: #10B981;
-    color: white;
-    cursor: pointer;
+    background-color: #10B981 !important;
+    color: white !important;
+    cursor: pointer !important;
 }
 
 .horario-disponivel:hover {
-    background-color: #059669;
+    background-color: #059669 !important;
     transform: scale(1.05);
     box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
 }
 
 .horario-agendado {
-    background-color: #9CA3AF;
-    color: #4B5563;
-    cursor: not-allowed;
-    opacity: 0.6;
+    background-color: #9CA3AF !important;
+    color: #4B5563 !important;
+    cursor: not-allowed !important;
+    opacity: 0.6 !important;
+    pointer-events: none !important;
 }
 
 .horario-agendado:hover {
-    background-color: #9CA3AF;
-    transform: none;
-    box-shadow: none;
+    background-color: #9CA3AF !important;
+    transform: none !important;
+    box-shadow: none !important;
 }
 
 .horario-selecionado {
-    background-color: #3B82F6;
-    color: white;
-    border: 2px solid #1E40AF;
-    box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+    background-color: #3B82F6 !important;
+    color: white !important;
+    border: 2px solid #1E40AF !important;
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.5) !important;
+}
+
+.horario-selecionado:hover {
+    background-color: #1D4ED8 !important;
 }
 
 .legenda-item {
@@ -176,17 +181,26 @@ def obter_horarios_com_status(data_str):
     if not horarios_base:
         return []
     
+    # DEBUG: mostrar data sendo buscada
+    st.write(f"📊 Buscando agendamentos para: {data_str}")
+    
     query = """
-        SELECT DISTINCT hora_agendamento 
+        SELECT hora_agendamento
         FROM agendamentos 
         WHERE data_agendamento = %s AND status = 'confirmado'
     """
     agendados, erro = execute_query(query, (data_str,), fetch=True, commit=False)
     
-    horarios_agendados = set()
+    horarios_agendados = []
     if agendados:
         for row in agendados:
-            horarios_agendados.add(row['hora_agendamento'])
+            horarios_agendados.append(row['hora_agendamento'])
+    
+    # DEBUG: mostrar horários agendados encontrados
+    if horarios_agendados:
+        st.write(f"✅ Horários agendados encontrados: {horarios_agendados}")
+    else:
+        st.write("ℹ️ Nenhum horário agendado para esta data")
     
     horarios_com_status = []
     for hora in horarios_base:
@@ -262,17 +276,17 @@ if menu == "🏪 Agendar Serviço":
             if status == 'agendado':
                 classe = 'horario-agendado'
                 icone = '🚫'
-                onclick = ''
+                onclick = 'onclick="return false"'
             elif hora == hora_selecionada:
                 classe = 'horario-selecionado'
                 icone = '✅'
-                onclick = f'onclick="deselecionarHorario()"'
+                onclick = f'onclick="deselecionarHorario(); return false;"'
             else:
                 classe = 'horario-disponivel'
                 icone = '⏰'
-                onclick = f'onclick="selecionarHorario(\'{hora}\')"'
+                onclick = f'onclick="selecionarHorario(\'{hora}\'); return false;"'
             
-            html_horarios += f'<button class="horario-btn {classe}" {onclick} {"disabled" if status == "agendado" else ""}>{icone} {hora}</button>'
+            html_horarios += f'<button class="horario-btn {classe}" {onclick} type="button">{icone} {hora}</button>'
         
         html_horarios += '</div>'
         st.markdown(html_horarios, unsafe_allow_html=True)
