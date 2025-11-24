@@ -2,6 +2,7 @@ import streamlit as st
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
+import json
 
 # Configuração da página
 st.set_page_config(
@@ -11,33 +12,96 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS customizado para botões coloridos do Streamlit
+# CSS e JavaScript customizado para horários interativos
 st.markdown("""
 <style>
-/* Botões verdes para horários disponíveis */
-div[data-testid="stButtonContainer"] > button[kind="secondary"] {
-    background-color: #10B981 !important;
-    color: white !important;
-    border: none !important;
+.horario-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+    margin: 20px 0;
 }
 
-div[data-testid="stButtonContainer"] > button[kind="secondary"]:hover {
-    background-color: #059669 !important;
+.horario-btn {
+    padding: 15px;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: center;
+    font-family: Arial, sans-serif;
 }
 
-/* Botões azuis para horários selecionados */
-div[data-testid="stButtonContainer"] > button[kind="primary"] {
-    background-color: #3B82F6 !important;
-    color: white !important;
+.horario-disponivel {
+    background-color: #10B981;
+    color: white;
 }
 
-div[data-testid="stButtonContainer"] > button[kind="primary"]:hover {
-    background-color: #1D4ED8 !important;
+.horario-disponivel:hover {
+    background-color: #059669;
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.horario-agendado {
+    background-color: #9CA3AF;
+    color: #4B5563;
+    opacity: 0.6;
+    cursor: not-allowed !important;
+}
+
+.horario-agendado:hover {
+    background-color: #9CA3AF;
+    transform: none;
+    box-shadow: none;
+    cursor: not-allowed !important;
+}
+
+.horario-selecionado {
+    background-color: #3B82F6;
+    color: white;
+    border: 2px solid #1E40AF;
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+}
+
+.horario-selecionado:hover {
+    background-color: #1D4ED8;
+}
+
+.legenda-item {
+    display: inline-block;
+    margin: 0 15px 10px 0;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-weight: bold;
+}
+
+.legenda-verde {
+    background-color: #10B981;
+    color: white;
+}
+
+.legenda-azul {
+    background-color: #3B82F6;
+    color: white;
+}
+
+.legenda-cinza {
+    background-color: #9CA3AF;
+    color: white;
+}
+
+@media (max-width: 768px) {
+    .horario-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
 }
 </style>
 """, unsafe_allow_html=True)
 
-# Conectar ao NeonDB com melhor tratamento de erro
+# Conectar ao NeonDB
 def execute_query(query, params=None, fetch=True, commit=False):
     """Executa query no banco com commit opcional"""
     conn = None
@@ -82,12 +146,12 @@ def gerar_horarios_base(data_str):
     
     horarios = []
     
-    if dia_semana == 6:  # Domingo
+    if dia_semana == 6:
         return horarios
-    elif dia_semana == 5:  # Sábado
+    elif dia_semana == 5:
         hora_inicio = datetime.strptime("08:00", "%H:%M")
         hora_fim = datetime.strptime("12:00", "%H:%M")
-    else:  # Seg-sex
+    else:
         hora_inicio = datetime.strptime("08:00", "%H:%M")
         hora_fim = datetime.strptime("17:30", "%H:%M")
     
@@ -99,16 +163,12 @@ def gerar_horarios_base(data_str):
     return horarios
 
 def obter_horarios_com_status(data_str):
-    """
-    Gera horários base e busca quais foram agendados.
-    Retorna todos os horários com status 'disponivel' ou 'agendado'
-    """
+    """Gera horários base e busca quais foram agendados"""
     horarios_base = gerar_horarios_base(data_str)
     
     if not horarios_base:
         return []
     
-    # Buscar agendamentos confirmados para esta data
     query = """
         SELECT DISTINCT hora_agendamento 
         FROM agendamentos 
@@ -116,19 +176,14 @@ def obter_horarios_com_status(data_str):
     """
     agendados, erro = execute_query(query, (data_str,), fetch=True, commit=False)
     
-    # Criar conjunto de horários agendados
     horarios_agendados = set()
     if agendados:
         for row in agendados:
             horarios_agendados.add(row['hora_agendamento'])
     
-    # Combinar horários base com status
     horarios_com_status = []
     for hora in horarios_base:
-        if hora in horarios_agendados:
-            status = 'agendado'
-        else:
-            status = 'disponivel'
+        status = 'agendado' if hora in horarios_agendados else 'disponivel'
         horarios_com_status.append({'hora': hora, 'status': status})
     
     return horarios_com_status
@@ -138,7 +193,6 @@ def obter_horarios_com_status(data_str):
 st.title("📅 Sistema de Agendamento - Capital Truck Center")
 st.markdown("---")
 
-# Menu lateral
 menu = st.sidebar.radio(
     "Selecione uma opção:",
     ["🏪 Agendar Serviço", "👨‍💼 Painel Admin"]
@@ -174,66 +228,70 @@ if menu == "🏪 Agendar Serviço":
     )
     
     data_str = data_agendamento.strftime("%Y-%m-%d")
-    
-    # Carregar horários - gera localmente e busca agendamentos no banco
     horarios_status = obter_horarios_com_status(data_str)
     
     if horarios_status:
         st.markdown("#### 📅 Selecione um horário:")
         
-        # Separar disponíveis e reservados
-        horarios_disponiveis = [h['hora'] for h in horarios_status if h['status'] == 'disponivel']
-        horarios_reservados = [h['hora'] for h in horarios_status if h['status'] == 'agendado']
-        
-        # Mostrar legenda
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.write("🟢 **Verde** = Disponível")
-        with col2:
-            st.write("🔵 **Azul** = Selecionado")
-        with col3:
-            st.write("⚫ **Cinza** = Reservado")
+        # Legenda com cores reais
+        st.markdown(
+            '<div><span class="legenda-item legenda-verde">🟢 Verde = Disponível</span>'
+            '<span class="legenda-item legenda-cinza">⚫ Cinza = Reservado</span>'
+            '<span class="legenda-item legenda-azul">🔵 Azul = Selecionado</span></div>',
+            unsafe_allow_html=True
+        )
         
         st.divider()
         
-        # HORÁRIOS DISPONÍVEIS com botões verdes
-        st.markdown("**Horários disponíveis:**")
+        # Gerar HTML dos botões
+        html_horarios = '<div class="horario-grid">'
         
         hora_selecionada = st.session_state.get('hora_selecionada', None)
         
-        num_colunas = 5
-        for i in range(0, len(horarios_disponiveis), num_colunas):
-            cols = st.columns(num_colunas)
-            for j, col in enumerate(cols):
-                if i + j < len(horarios_disponiveis):
-                    hora = horarios_disponiveis[i + j]
-                    
-                    if hora == hora_selecionada:
-                        # Botão azul (selecionado) - tipo primary
-                        if col.button(f"✅ {hora}", key=f"btn_{hora}", use_container_width=True, type="primary"):
-                            st.session_state['hora_selecionada'] = None
-                    else:
-                        # Botão verde (disponível) - tipo secondary
-                        if col.button(f"⏰ {hora}", key=f"btn_{hora}", use_container_width=True):
-                            st.session_state['hora_selecionada'] = hora
+        for h in horarios_status:
+            hora = h['hora']
+            status = h['status']
+            
+            if status == 'agendado':
+                classe = 'horario-agendado'
+                icone = '🚫'
+                onclick = ''
+            elif hora == hora_selecionada:
+                classe = 'horario-selecionado'
+                icone = '✅'
+                onclick = f'onclick="document.getElementById(\'deselecionar\').click()"'
+            else:
+                classe = 'horario-disponivel'
+                icone = '⏰'
+                onclick = f'onclick="document.getElementById(\'selecionar_{hora.replace(":", "")}\').click()"'
+            
+            html_horarios += f'<button class="horario-btn {classe}" {onclick} {"disabled" if status == "agendado" else ""}>{icone} {hora}</button>'
+        
+        html_horarios += '</div>'
+        st.markdown(html_horarios, unsafe_allow_html=True)
         
         st.divider()
         
-        # HORÁRIOS RESERVADOS (desabilitados)
-        if horarios_reservados:
-            st.markdown("**Horários já reservados:**")
-            
-            for i in range(0, len(horarios_reservados), num_colunas):
-                cols = st.columns(num_colunas)
-                for j, col in enumerate(cols):
-                    if i + j < len(horarios_reservados):
-                        hora = horarios_reservados[i + j]
-                        col.button(f"🚫 {hora}", key=f"btn_res_{hora}", use_container_width=True, disabled=True)
+        # Botões ocultos para capturar seleção
+        col_hidden1, col_hidden2 = st.columns(2)
         
-        # Mostrar seleção atual
+        with col_hidden1:
+            for h in horarios_status:
+                hora = h['hora']
+                if h['status'] == 'disponivel':
+                    if st.button(f"Selecionar {hora}", key=f"selecionar_{hora.replace(':', '')}", label_visibility="collapsed"):
+                        st.session_state['hora_selecionada'] = hora
+                        st.rerun()
+        
+        with col_hidden2:
+            if st.button("Deselecionar", key="deselecionar", label_visibility="collapsed"):
+                st.session_state['hora_selecionada'] = None
+                st.rerun()
+        
+        # Mostrar seleção
         hora_selecionada = st.session_state.get('hora_selecionada', None)
         if hora_selecionada:
-            st.success(f"✅ Horário selecionado: **{hora_selecionada}**", icon="✅")
+            st.success(f"✅ Horário selecionado: **{hora_selecionada}**")
     else:
         st.warning("⚠️ Não há horários disponíveis para esta data (domingo ou feriado)")
     
@@ -252,7 +310,6 @@ if menu == "🏪 Agendar Serviço":
         if not nome_cliente or not telefone or not placa or not modelo or not hora_selecionada:
             st.error("❌ Preencha todos os campos obrigatórios!")
         else:
-            # Inserir cliente
             query_cliente = """
                 INSERT INTO clientes (nome, telefone, email)
                 VALUES (%s, %s, %s)
@@ -265,7 +322,6 @@ if menu == "🏪 Agendar Serviço":
             elif resultado_cliente:
                 cliente_id = resultado_cliente[0]['id']
                 
-                # Inserir veículo
                 query_veiculo = """
                     INSERT INTO veiculos (cliente_id, placa, modelo, ano)
                     VALUES (%s, %s, %s, %s)
@@ -278,7 +334,6 @@ if menu == "🏪 Agendar Serviço":
                 elif resultado_veiculo:
                     veiculo_id = resultado_veiculo[0]['id']
                     
-                    # Verificar se o horário já foi agendado (double-check)
                     query_verificar = """
                         SELECT id FROM agendamentos 
                         WHERE data_agendamento = %s AND hora_agendamento = %s AND status = 'confirmado'
@@ -289,7 +344,6 @@ if menu == "🏪 Agendar Serviço":
                     if verificacao:
                         st.error("❌ Desculpe! Este horário foi agendado por outro cliente. Escolha outro!")
                     else:
-                        # Inserir agendamento
                         query_agendamento = """
                             INSERT INTO agendamentos (cliente_id, veiculo_id, data_agendamento, hora_agendamento, servico, status)
                             VALUES (%s, %s, %s, %s, %s, 'confirmado')
