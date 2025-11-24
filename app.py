@@ -2,7 +2,6 @@ import streamlit as st
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
-import json
 
 # Configuração da página
 st.set_page_config(
@@ -12,7 +11,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS e JavaScript customizado para horários interativos
+# CSS customizado
 st.markdown("""
 <style>
 .horario-grid {
@@ -24,19 +23,19 @@ st.markdown("""
 
 .horario-btn {
     padding: 15px;
-    border: none;
+    border: 2px solid transparent;
     border-radius: 8px;
     font-weight: bold;
     font-size: 14px;
-    cursor: pointer;
+    font-family: Arial, sans-serif;
     transition: all 0.3s ease;
     text-align: center;
-    font-family: Arial, sans-serif;
 }
 
 .horario-disponivel {
     background-color: #10B981;
     color: white;
+    cursor: pointer;
 }
 
 .horario-disponivel:hover {
@@ -48,15 +47,14 @@ st.markdown("""
 .horario-agendado {
     background-color: #9CA3AF;
     color: #4B5563;
+    cursor: not-allowed;
     opacity: 0.6;
-    cursor: not-allowed !important;
 }
 
 .horario-agendado:hover {
     background-color: #9CA3AF;
     transform: none;
     box-shadow: none;
-    cursor: not-allowed !important;
 }
 
 .horario-selecionado {
@@ -66,16 +64,13 @@ st.markdown("""
     box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
 }
 
-.horario-selecionado:hover {
-    background-color: #1D4ED8;
-}
-
 .legenda-item {
     display: inline-block;
     margin: 0 15px 10px 0;
     padding: 8px 12px;
     border-radius: 6px;
     font-weight: bold;
+    font-size: 14px;
 }
 
 .legenda-verde {
@@ -99,6 +94,18 @@ st.markdown("""
     }
 }
 </style>
+
+<script>
+function selecionarHorario(hora) {
+    sessionStorage.setItem('hora_selecionada', hora);
+    location.reload();
+}
+
+function deselecionarHorario() {
+    sessionStorage.removeItem('hora_selecionada');
+    location.reload();
+}
+</script>
 """, unsafe_allow_html=True)
 
 # Conectar ao NeonDB
@@ -259,11 +266,11 @@ if menu == "🏪 Agendar Serviço":
             elif hora == hora_selecionada:
                 classe = 'horario-selecionado'
                 icone = '✅'
-                onclick = f'onclick="document.getElementById(\'deselecionar\').click()"'
+                onclick = f'onclick="deselecionarHorario()"'
             else:
                 classe = 'horario-disponivel'
                 icone = '⏰'
-                onclick = f'onclick="document.getElementById(\'selecionar_{hora.replace(":", "")}\').click()"'
+                onclick = f'onclick="selecionarHorario(\'{hora}\')"'
             
             html_horarios += f'<button class="horario-btn {classe}" {onclick} {"disabled" if status == "agendado" else ""}>{icone} {hora}</button>'
         
@@ -271,22 +278,6 @@ if menu == "🏪 Agendar Serviço":
         st.markdown(html_horarios, unsafe_allow_html=True)
         
         st.divider()
-        
-        # Botões ocultos para capturar seleção
-        col_hidden1, col_hidden2 = st.columns(2)
-        
-        with col_hidden1:
-            for h in horarios_status:
-                hora = h['hora']
-                if h['status'] == 'disponivel':
-                    if st.button(f"Selecionar {hora}", key=f"selecionar_{hora.replace(':', '')}", label_visibility="collapsed"):
-                        st.session_state['hora_selecionada'] = hora
-                        st.rerun()
-        
-        with col_hidden2:
-            if st.button("Deselecionar", key="deselecionar", label_visibility="collapsed"):
-                st.session_state['hora_selecionada'] = None
-                st.rerun()
         
         # Mostrar seleção
         hora_selecionada = st.session_state.get('hora_selecionada', None)
