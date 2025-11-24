@@ -11,7 +11,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS customizado
+# CSS customizado - SEM JavaScript
 st.markdown("""
 <style>
 .horario-grid {
@@ -30,6 +30,8 @@ st.markdown("""
     font-family: Arial, sans-serif;
     transition: all 0.3s ease;
     text-align: center;
+    background-color: inherit;
+    color: inherit;
 }
 
 .horario-disponivel {
@@ -41,7 +43,7 @@ st.markdown("""
 .horario-disponivel:hover {
     background-color: #059669 !important;
     transform: scale(1.05);
-    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3) !important;
 }
 
 .horario-agendado {
@@ -49,13 +51,13 @@ st.markdown("""
     color: #4B5563 !important;
     cursor: not-allowed !important;
     opacity: 0.6 !important;
-    pointer-events: none !important;
 }
 
 .horario-agendado:hover {
     background-color: #9CA3AF !important;
     transform: none !important;
     box-shadow: none !important;
+    cursor: not-allowed !important;
 }
 
 .horario-selecionado {
@@ -99,18 +101,6 @@ st.markdown("""
     }
 }
 </style>
-
-<script>
-function selecionarHorario(hora) {
-    sessionStorage.setItem('hora_selecionada', hora);
-    location.reload();
-}
-
-function deselecionarHorario() {
-    sessionStorage.removeItem('hora_selecionada');
-    location.reload();
-}
-</script>
 """, unsafe_allow_html=True)
 
 # Conectar ao NeonDB
@@ -181,9 +171,6 @@ def obter_horarios_com_status(data_str):
     if not horarios_base:
         return []
     
-    # DEBUG: mostrar data sendo buscada
-    st.write(f"📊 Buscando agendamentos para: {data_str}")
-    
     query = """
         SELECT hora_agendamento
         FROM agendamentos 
@@ -195,12 +182,6 @@ def obter_horarios_com_status(data_str):
     if agendados:
         for row in agendados:
             horarios_agendados.append(row['hora_agendamento'])
-    
-    # DEBUG: mostrar horários agendados encontrados
-    if horarios_agendados:
-        st.write(f"✅ Horários agendados encontrados: {horarios_agendados}")
-    else:
-        st.write("ℹ️ Nenhum horário agendado para esta data")
     
     horarios_com_status = []
     for hora in horarios_base:
@@ -264,32 +245,47 @@ if menu == "🏪 Agendar Serviço":
         
         st.divider()
         
-        # Gerar HTML dos botões
-        html_horarios = '<div class="horario-grid">'
-        
+        # Grid de horários com botões Streamlit
         hora_selecionada = st.session_state.get('hora_selecionada', None)
+        
+        # Criar colunas dinamicamente
+        cols = st.columns(5)
+        col_index = 0
         
         for h in horarios_status:
             hora = h['hora']
             status = h['status']
             
-            if status == 'agendado':
-                classe = 'horario-agendado'
-                icone = '🚫'
-                onclick = 'onclick="return false"'
-            elif hora == hora_selecionada:
-                classe = 'horario-selecionado'
-                icone = '✅'
-                onclick = f'onclick="deselecionarHorario(); return false;"'
-            else:
-                classe = 'horario-disponivel'
-                icone = '⏰'
-                onclick = f'onclick="selecionarHorario(\'{hora}\'); return false;"'
+            with cols[col_index % 5]:
+                if status == 'agendado':
+                    # Botão desabilitado (cinza)
+                    st.button(
+                        f"🚫 {hora}",
+                        key=f"btn_{hora}",
+                        disabled=True,
+                        use_container_width=True
+                    )
+                elif hora == hora_selecionada:
+                    # Botão selecionado (azul)
+                    if st.button(
+                        f"✅ {hora}",
+                        key=f"btn_{hora}",
+                        use_container_width=True,
+                        type="primary"
+                    ):
+                        st.session_state['hora_selecionada'] = None
+                        st.rerun()
+                else:
+                    # Botão disponível (verde)
+                    if st.button(
+                        f"⏰ {hora}",
+                        key=f"btn_{hora}",
+                        use_container_width=True
+                    ):
+                        st.session_state['hora_selecionada'] = hora
+                        st.rerun()
             
-            html_horarios += f'<button class="horario-btn {classe}" {onclick} type="button">{icone} {hora}</button>'
-        
-        html_horarios += '</div>'
-        st.markdown(html_horarios, unsafe_allow_html=True)
+            col_index += 1
         
         st.divider()
         
