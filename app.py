@@ -2,8 +2,6 @@ import streamlit as st
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
-import pandas as pd
-import hashlib
 
 # Configuração da página
 st.set_page_config(
@@ -13,22 +11,20 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Conectar ao NeonDB
-@st.cache_resource
-def get_db_connection():
-    conn = psycopg2.connect(
-        host = st.secrets["NEON_HOST"],
-        user = st.secrets["NEON_USER"],
-        password= st.secrets["NEON_PASSWORD"],
-        database="neondb",
-        sslmode="require"
-    )
-    return conn
-
+# Conectar ao NeonDB - CORRIGIDO
 def execute_query(query, params=None, fetch=True):
-    """Executa query no banco"""
+    """Executa query no banco com tratamento melhorado"""
+    conn = None
     try:
-        conn = get_db_connection()
+        conn = psycopg2.connect(
+            host = st.secrets["NEON_HOST"],
+            user = st.secrets["NEON_USER"],
+            password= st.secrets["NEON_PASSWORD"],
+            database="neondb",
+            sslmode="require"
+            connect_timeout=10
+        )
+        
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute(query, params)
         
@@ -39,11 +35,17 @@ def execute_query(query, params=None, fetch=True):
             result = None
         
         cur.close()
-        conn.close()
         return result
-    except Exception as e:
-        st.error(f"Erro no banco: {str(e)}")
+        
+    except psycopg2.OperationalError as e:
+        st.error(f"❌ Erro de conexão: {str(e)}")
         return None
+    except Exception as e:
+        st.error(f"❌ Erro no banco: {str(e)}")
+        return None
+    finally:
+        if conn:
+            conn.close()
 
 def gerar_horarios_disponiveis(data_str):
     """Gera horários de 20 em 20 minutos conforme o dia da semana"""
@@ -252,9 +254,7 @@ elif menu == "👨‍💼 Painel Admin":
             agendamentos = execute_query(query)
             
             if agendamentos:
-                df = pd.DataFrame(agendamentos)
-                df['data_agendamento'] = pd.to_datetime(df['data_agendamento']).dt.strftime('%d/%m/%Y')
-                st.dataframe(df, use_container_width=True)
+                st.dataframe(agendamentos, use_container_width=True)
             else:
                 st.info("Nenhum agendamento encontrado")
         
@@ -297,7 +297,8 @@ elif menu == "👨‍💼 Painel Admin":
             
             # Total de agendamentos
             query_total = "SELECT COUNT(*) as total FROM agendamentos WHERE status = 'confirmado'"
-            total = execute_query(query_total)[0]['total']
+            total_result = execute_query(query_total)
+            total = total_result[0]['total'] if total_result else 0
             
             # Agendamentos por serviço
             query_servicos = """
@@ -311,13 +312,17 @@ elif menu == "👨‍💼 Painel Admin":
             col1, col2 = st.columns(2)
             with col1:
                 st.metric("Total de Agendamentos", total)
+            
             with col2:
-                st.metric("Clientes Únicos", execute_query("SELECT COUNT(DISTINCT cliente_id) as total FROM agendamentos")[0]['total'])
+                query_clientes = "SELECT COUNT(DISTINCT cliente_id) as total FROM agendamentos"
+                clientes_result = execute_query(query_clientes)
+                clientes = clientes_result[0]['total'] if clientes_result else 0
+                st.metric("Clientes Únicos", clientes)
             
             if servicos:
                 st.markdown("**Agendamentos por Serviço:**")
-                df_servicos = pd.DataFrame(servicos)
-                st.bar_chart(df_servicos.set_index('servico'))
+                for servico in servicos:
+                    st.write(f"- {servico['servico']}: {servico['quantidade']}")
     else:
         if senha_admin:
             st.error("❌ Senha incorreta!")
