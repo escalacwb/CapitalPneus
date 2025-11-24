@@ -48,8 +48,7 @@ def execute_query(query, params=None, fetch=True, commit=False):
             password=st.secrets.get("NEON_PASSWORD", "npg_l2IOvsnEW1QZ"),
             database="neondb",
             sslmode="require",
-            connect_timeout=5,
-            autocommit=False
+            connect_timeout=5
         )
         
         cur = conn.cursor(cursor_factory=RealDictCursor)
