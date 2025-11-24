@@ -1,7 +1,7 @@
 import streamlit as st
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 
 st.set_page_config(
     page_title="Sistema de Agendamento",
@@ -43,6 +43,17 @@ def execute_query(query, params=None, fetch=True, commit=False):
         if conn:
             conn.close()
 
+def normalizar_hora(hora):
+    """Converte qualquer formato de hora para HH:MM"""
+    if isinstance(hora, time):
+        return hora.strftime("%H:%M")
+    elif isinstance(hora, str):
+        # "08:00:00" -> "08:00"
+        # "08:00" -> "08:00"
+        return hora[:5]
+    else:
+        return str(hora)[:5]
+
 def gerar_horarios_base(data_str):
     """Gera horários de 20 em 20 minutos"""
     data = datetime.strptime(data_str, "%Y-%m-%d").date()
@@ -66,24 +77,23 @@ def gerar_horarios_base(data_str):
     return horarios
 
 def obter_horarios_agendados(data_str):
-    """Retorna lista de horários agendados - NORMALIZADO"""
+    """Retorna lista de horários agendados - GARANTIDAMENTE NORMALIZADOS"""
     query = """
         SELECT DISTINCT hora_agendamento 
         FROM agendamentos 
         WHERE data_agendamento = %s AND status = 'confirmado'
     """
-    resultado, _ = execute_query(query, (data_str,), fetch=True)
+    resultado, erro = execute_query(query, (data_str,), fetch=True)
+    
+    if erro:
+        st.error(f"❌ Erro ao buscar agendamentos: {erro}")
+        return []
     
     if resultado:
-        # NORMALIZAR: Converter para formato HH:MM
         agendados = []
         for row in resultado:
             hora = row['hora_agendamento']
-            # Se vier como "08:00:00", converte para "08:00"
-            if isinstance(hora, str) and len(hora) >= 5:
-                hora_normalizada = hora[:5]
-            else:
-                hora_normalizada = str(hora)
+            hora_normalizada = normalizar_hora(hora)
             agendados.append(hora_normalizada)
         return agendados
     
