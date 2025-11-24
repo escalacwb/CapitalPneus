@@ -233,24 +233,32 @@ def criar_tabelas_se_nao_existem():
             data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """,
-        """
-        CREATE TABLE IF NOT EXISTS agendamentos (
-            id SERIAL PRIMARY KEY,
-            usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
-            veiculo_id INTEGER NOT NULL REFERENCES veiculos_usuario(id),
-            data_agendamento DATE NOT NULL,
-            hora_agendamento TIME NOT NULL,
-            servico VARCHAR(100) NOT NULL,
-            status VARCHAR(50) DEFAULT 'confirmado',
-            data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """
     ]
     
     for query in queries:
         _, erro = execute_query(query, fetch=False, commit=True)
-        if erro:
+        if erro and "already exists" not in erro.lower():
             st.error(f"Erro ao criar tabelas: {erro}")
+    
+    # Recriar tabela agendamentos com estrutura correta
+    query_drop = "DROP TABLE IF EXISTS agendamentos CASCADE"
+    _, _ = execute_query(query_drop, fetch=False, commit=True)
+    
+    query_create = """
+    CREATE TABLE IF NOT EXISTS agendamentos (
+        id SERIAL PRIMARY KEY,
+        usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+        veiculo_id INTEGER NOT NULL REFERENCES veiculos_usuario(id),
+        data_agendamento DATE NOT NULL,
+        hora_agendamento TIME NOT NULL,
+        servico VARCHAR(100) NOT NULL,
+        status VARCHAR(50) DEFAULT 'confirmado',
+        data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """
+    _, erro = execute_query(query_create, fetch=False, commit=True)
+    if erro:
+        st.error(f"Erro ao criar tabela agendamentos: {erro}")
 
 # Inicializar tabelas
 criar_tabelas_se_nao_existem()
