@@ -100,32 +100,35 @@ def gerar_horarios_base(data_str):
 
 def obter_horarios_com_status(data_str):
     """
-    Gera horários base e busca status deles no banco.
-    Se não existem no banco, assume como 'disponivel'
+    Gera horários base e busca quais foram agendados.
+    Retorna todos os horários com status 'disponivel' ou 'agendado'
     """
     horarios_base = gerar_horarios_base(data_str)
     
     if not horarios_base:
         return []
     
-    # Buscar status dos horários no banco
+    # Buscar agendamentos confirmados para esta data
     query = """
-        SELECT hora, status FROM horarios_disponiveis
-        WHERE data = %s
+        SELECT DISTINCT hora_agendamento 
+        FROM agendamentos 
+        WHERE data_agendamento = %s AND status = 'confirmado'
     """
-    data = datetime.strptime(data_str, "%Y-%m-%d").date()
-    resultado_banco, erro = execute_query(query, (data,), fetch=True, commit=False)
+    agendados, erro = execute_query(query, (data_str,), fetch=True, commit=False)
     
-    # Criar dicionário de status
-    status_dict = {}
-    if resultado_banco:
-        for row in resultado_banco:
-            status_dict[row['hora']] = row['status']
+    # Criar conjunto de horários agendados
+    horarios_agendados = set()
+    if agendados:
+        for row in agendados:
+            horarios_agendados.add(row['hora_agendamento'])
     
-    # Combinar horários base com status do banco
+    # Combinar horários base com status
     horarios_com_status = []
     for hora in horarios_base:
-        status = status_dict.get(hora, 'disponivel')  # Se não existe no banco, é disponível
+        if hora in horarios_agendados:
+            status = 'agendado'
+        else:
+            status = 'disponivel'
         horarios_com_status.append({'hora': hora, 'status': status})
     
     return horarios_com_status
@@ -172,7 +175,7 @@ if menu == "🏪 Agendar Serviço":
     
     data_str = data_agendamento.strftime("%Y-%m-%d")
     
-    # Carregar horários - gera localmente e busca status no banco
+    # Carregar horários - gera localmente e busca agendamentos no banco
     horarios_status = obter_horarios_com_status(data_str)
     
     if horarios_status:
@@ -275,59 +278,30 @@ if menu == "🏪 Agendar Serviço":
                 elif resultado_veiculo:
                     veiculo_id = resultado_veiculo[0]['id']
                     
-                    # Obter ID do horário (ou criar se não existir)
-                    query_horario = """
-                        SELECT id FROM horarios_disponiveis
-                        WHERE data = %s AND hora = %s AND status = 'disponivel'
+                    # Verificar se o horário já foi agendado (double-check)
+                    query_verificar = """
+                        SELECT id FROM agendamentos 
+                        WHERE data_agendamento = %s AND hora_agendamento = %s AND status = 'confirmado'
                         LIMIT 1
                     """
-                    data = datetime.strptime(data_str, "%Y-%m-%d").date()
-                    resultado_horario, erro_horario = execute_query(query_horario, (data, hora_selecionada), fetch=True, commit=False)
+                    verificacao, _ = execute_query(query_verificar, (data_str, hora_selecionada), fetch=True, commit=False)
                     
-                    if resultado_horario:
-                        horario_id = resultado_horario[0]['id']
+                    if verificacao:
+                        st.error("❌ Desculpe! Este horário foi agendado por outro cliente. Escolha outro!")
                     else:
-                        # Se não existe, criar o horário
-                        query_criar_horario = """
-                            INSERT INTO horarios_disponiveis (data, hora, status)
-                            VALUES (%s, %s, 'disponivel')
-                            RETURNING id
-                        """
-                        resultado_criar, erro_criar = execute_query(query_criar_horario, (data, hora_selecionada), fetch=True, commit=True)
-                        
-                        if erro_criar or not resultado_criar:
-                            st.error(f"❌ Erro ao criar horário: {erro_criar}")
-                            horario_id = None
-                        else:
-                            horario_id = resultado_criar[0]['id']
-                    
-                    if horario_id:
                         # Inserir agendamento
                         query_agendamento = """
-                            INSERT INTO agendamentos (cliente_id, veiculo_id, horario_id, data_agendamento, hora_agendamento, servico, status)
-                            VALUES (%s, %s, %s, %s, %s, %s, 'confirmado')
+                            INSERT INTO agendamentos (cliente_id, veiculo_id, data_agendamento, hora_agendamento, servico, status)
+                            VALUES (%s, %s, %s, %s, %s, 'confirmado')
                         """
-                        _, erro_agendamento = execute_query(query_agendamento, (cliente_id, veiculo_id, horario_id, data_str, hora_selecionada, servico), fetch=False, commit=True)
+                        _, erro_agendamento = execute_query(query_agendamento, (cliente_id, veiculo_id, data_str, hora_selecionada, servico), fetch=False, commit=True)
                         
                         if erro_agendamento:
                             st.error(f"❌ Erro ao criar agendamento: {erro_agendamento}")
                         else:
-                            # Atualizar status do horário
-                            query_update_horario = """
-                                UPDATE horarios_disponiveis
-                                SET status = 'agendado'
-                                WHERE id = %s
-                            """
-                            _, erro_update = execute_query(query_update_horario, (horario_id,), fetch=False, commit=True)
-                            
-                            if erro_update:
-                                st.error(f"❌ Erro ao atualizar horário: {erro_update}")
-                            else:
-                                st.success(f"✅ Agendamento confirmado para {data_agendamento.strftime('%d/%m/%Y')} às {hora_selecionada}")
-                                st.balloons()
-                                st.session_state['hora_selecionada'] = None
-                    else:
-                        st.error("❌ Erro ao definir horário")
+                            st.success(f"✅ Agendamento confirmado para {data_agendamento.strftime('%d/%m/%Y')} às {hora_selecionada}")
+                            st.balloons()
+                            st.session_state['hora_selecionada'] = None
                 else:
                     st.error("❌ Erro ao cadastrar veículo")
             else:
@@ -390,13 +364,6 @@ elif menu == "👨‍💼 Painel Admin":
                     _, erro_cancel = execute_query(query_cancel, (agendamento_id,), fetch=False, commit=True)
                     
                     if not erro_cancel:
-                        query_horario_id = "SELECT horario_id FROM agendamentos WHERE id = %s"
-                        result, _ = execute_query(query_horario_id, (agendamento_id,), fetch=True)
-                        if result:
-                            horario_id = result[0]['horario_id']
-                            query_liberar = "UPDATE horarios_disponiveis SET status = 'disponivel' WHERE id = %s"
-                            execute_query(query_liberar, (horario_id,), fetch=False, commit=True)
-                        
                         st.success("✅ Agendamento cancelado!")
                     else:
                         st.error(f"❌ Erro ao cancelar: {erro_cancel}")
