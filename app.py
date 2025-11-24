@@ -65,43 +65,22 @@ def gerar_horarios_base(data_str):
     
     return horarios
 
-def verificar_horario_disponivel(data_str, hora):
-    """Verifica se horário está disponível"""
-    query = """
-        SELECT COUNT(*) as count FROM agendamentos 
-        WHERE data_agendamento = %s AND hora_agendamento = %s AND status = 'confirmado'
-    """
-    result, erro = execute_query(query, (data_str, hora), fetch=True)
-    
-    if erro or not result:
-        return False
-    
-    return result[0]['count'] == 0
-
-def obter_horarios_status_completo(data_str):
-    """Retorna status EXATO de cada horário"""
-    horarios_base = gerar_horarios_base(data_str)
-    
-    if not horarios_base:
-        return {}
-    
+def obter_horarios_agendados(data_str):
+    """Retorna APENAS lista de horários agendados"""
     query = """
         SELECT DISTINCT hora_agendamento 
         FROM agendamentos 
         WHERE data_agendamento = %s AND status = 'confirmado'
     """
-    resultado, _ = execute_query(query, (data_str,), fetch=True)
+    resultado, erro = execute_query(query, (data_str,), fetch=True)
     
-    agendados = set()
+    if erro:
+        return []
+    
     if resultado:
-        for row in resultado:
-            agendados.add(row['hora_agendamento'])
+        return [row['hora_agendamento'] for row in resultado]
     
-    horarios_com_status = {}
-    for hora in horarios_base:
-        horarios_com_status[hora] = 'agendado' if hora in agendados else 'disponivel'
-    
-    return horarios_com_status
+    return []
 
 st.title("📅 Sistema de Agendamento - Capital Truck Center")
 st.markdown("---")
@@ -138,9 +117,12 @@ if menu == "🏪 Agendar Serviço":
     )
     
     data_str = data_agendamento.strftime("%Y-%m-%d")
-    horarios_status = obter_horarios_status_completo(data_str)
     
-    if horarios_status:
+    # Buscar horários base e agendados
+    horarios_base = gerar_horarios_base(data_str)
+    horarios_agendados = obter_horarios_agendados(data_str)
+    
+    if horarios_base:
         st.markdown("#### 📅 Selecione um horário:")
         st.info("🟢 Verde = Disponível | ⚫ Cinza = Reservado | 🔵 Azul = Selecionado")
         
@@ -148,59 +130,52 @@ if menu == "🏪 Agendar Serviço":
         
         hora_selecionada = st.session_state.get('hora_selecionada', None)
         
-        # Exibir horários em grid usando selectbox
-        horarios_ordenados = sorted(horarios_status.keys())
-        
-        # Criar colunas
+        # Grid de horários
         cols = st.columns(5)
         col_index = 0
         
-        for hora in horarios_ordenados:
-            status = horarios_status[hora]
+        for hora in horarios_base:
+            is_agendado = hora in horarios_agendados
+            is_selecionado = hora == hora_selecionada
             
             with cols[col_index % 5]:
-                if status == 'agendado':
-                    # Botão cinza - DESABILITADO
+                if is_agendado:
+                    # BOTÃO CINZA - DESABILITADO
                     st.button(
                         f"🚫 {hora}",
-                        key=f"btn_agende_{hora}",
+                        key=f"agend_{hora}",
                         disabled=True,
                         use_container_width=True
                     )
-                elif hora == hora_selecionada:
-                    # Botão azul - SELECIONADO
-                    col1, col2 = st.columns([3, 1])
-                    with col1:
-                        if st.button(
-                            f"✅ {hora}",
-                            key=f"btn_selecionado_{hora}",
-                            use_container_width=True,
-                            type="primary"
-                        ):
-                            st.session_state['hora_selecionada'] = None
-                            st.rerun()
+                elif is_selecionado:
+                    # BOTÃO AZUL - SELECIONADO
+                    if st.button(
+                        f"✅ {hora}",
+                        key=f"selecionado_{hora}",
+                        use_container_width=True,
+                        type="primary"
+                    ):
+                        st.session_state['hora_selecionada'] = None
+                        st.rerun()
                 else:
-                    # Botão verde - DISPONÍVEL
+                    # BOTÃO VERDE - DISPONÍVEL
                     if st.button(
                         f"⏰ {hora}",
-                        key=f"btn_disponivel_{hora}",
+                        key=f"disponivel_{hora}",
                         use_container_width=True
                     ):
-                        if verificar_horario_disponivel(data_str, hora):
-                            st.session_state['hora_selecionada'] = hora
-                            st.rerun()
-                        else:
-                            st.error(f"❌ Horário {hora} foi agendado! Escolha outro.")
+                        st.session_state['hora_selecionada'] = hora
+                        st.rerun()
             
             col_index += 1
         
         st.divider()
         
         if hora_selecionada:
-            if verificar_horario_disponivel(data_str, hora_selecionada):
+            if hora_selecionada not in horarios_agendados:
                 st.success(f"✅ Horário selecionado: **{hora_selecionada}**")
             else:
-                st.error(f"❌ Horário {hora_selecionada} não está mais disponível!")
+                st.error(f"❌ Horário {hora_selecionada} foi agendado!")
                 st.session_state['hora_selecionada'] = None
                 st.rerun()
     else:
@@ -221,11 +196,15 @@ if menu == "🏪 Agendar Serviço":
         if not all([nome_cliente, telefone, placa, modelo, hora_selecionada]):
             st.error("❌ Preencha todos os campos obrigatórios!")
         else:
-            if not verificar_horario_disponivel(data_str, hora_selecionada):
-                st.error(f"❌ Desculpe! Horário {hora_selecionada} já foi agendado. Escolha outro!")
+            # Verificar NOVAMENTE se ainda está disponível
+            horarios_agendados_atual = obter_horarios_agendados(data_str)
+            
+            if hora_selecionada in horarios_agendados_atual:
+                st.error(f"❌ Horário {hora_selecionada} já foi agendado!")
                 st.session_state['hora_selecionada'] = None
                 st.rerun()
             else:
+                # Inserir cliente
                 query_cliente = "INSERT INTO clientes (nome, telefone, email) VALUES (%s, %s, %s) RETURNING id"
                 resultado_cliente, erro_cliente = execute_query(query_cliente, (nome_cliente, telefone, email), fetch=True, commit=True)
                 
@@ -234,6 +213,7 @@ if menu == "🏪 Agendar Serviço":
                 elif resultado_cliente:
                     cliente_id = resultado_cliente[0]['id']
                     
+                    # Inserir veículo
                     query_veiculo = "INSERT INTO veiculos (cliente_id, placa, modelo, ano) VALUES (%s, %s, %s, %s) RETURNING id"
                     resultado_veiculo, erro_veiculo = execute_query(query_veiculo, (cliente_id, placa, modelo, ano), fetch=True, commit=True)
                     
@@ -242,11 +222,15 @@ if menu == "🏪 Agendar Serviço":
                     elif resultado_veiculo:
                         veiculo_id = resultado_veiculo[0]['id']
                         
-                        if not verificar_horario_disponivel(data_str, hora_selecionada):
-                            st.error("❌ Alguém agendou este horário no último momento! Tente outro.")
+                        # Verificar NOVAMENTE antes de agendar
+                        horarios_agendados_final = obter_horarios_agendados(data_str)
+                        
+                        if hora_selecionada in horarios_agendados_final:
+                            st.error("❌ Alguém agendou este horário agora!")
                             st.session_state['hora_selecionada'] = None
                             st.rerun()
                         else:
+                            # Inserir agendamento
                             query_agendamento = "INSERT INTO agendamentos (cliente_id, veiculo_id, data_agendamento, hora_agendamento, servico, status) VALUES (%s, %s, %s, %s, %s, 'confirmado')"
                             _, erro_agendamento = execute_query(query_agendamento, (cliente_id, veiculo_id, data_str, hora_selecionada, servico), fetch=False, commit=True)
                             
