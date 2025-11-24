@@ -11,18 +11,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS customizado para os botões de horários
-st.markdown("""
-<style>
-.horario-grid {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 8px;
-    margin: 15px 0;
-}
-</style>
-""", unsafe_allow_html=True)
-
 # Conectar ao NeonDB
 def execute_query(query, params=None, fetch=True):
     """Executa query no banco com tratamento melhorado"""
@@ -155,44 +143,45 @@ if menu == "🏪 Agendar Serviço":
     horarios_status = obter_horarios_com_status(data_str)
     
     if horarios_status:
-        st.markdown("#### Horários Disponíveis:")
+        st.markdown("#### 📅 Selecione um horário:")
         
         # Separar disponíveis e reservados
         horarios_disponiveis = [h['hora'] for h in horarios_status if h['status'] == 'disponivel']
         horarios_reservados = [h['hora'] for h in horarios_status if h['status'] == 'agendado']
         
         # Mostrar legenda
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
-            st.write("🟢 **Verde** = Disponível")
+            st.write("🟢 Verde = Disponível")
         with col2:
-            st.write("⚫ **Cinza** = Reservado")
+            st.write("🔵 Azul = Selecionado")
+        with col3:
+            st.write("⚫ Cinza = Reservado")
+        
+        st.divider()
         
         # Criar grid de botões para horários disponíveis
         num_colunas = 5
         hora_selecionada = st.session_state.get('hora_selecionada', None)
         
-        st.markdown("**Clique no horário desejado:**")
-        
+        # HORÁRIOS DISPONÍVEIS
+        st.markdown("**Horários disponíveis:**")
         for i in range(0, len(horarios_disponiveis), num_colunas):
             cols = st.columns(num_colunas)
             for j, col in enumerate(cols):
                 if i + j < len(horarios_disponiveis):
                     hora = horarios_disponiveis[i + j]
                     
-                    # Determinar cor do botão
                     if hora == hora_selecionada:
-                        botao_tipo = "primary"
-                        label = f"✅ {hora}"
+                        if col.button(f"✅ {hora}", key=f"btn_{hora}", use_container_width=True):
+                            st.session_state['hora_selecionada'] = None
                     else:
-                        botao_tipo = "secondary"
-                        label = f"⏰ {hora}"
-                    
-                    if col.button(label, key=f"btn_disp_{hora}", use_container_width=True, type=botao_tipo):
-                        st.session_state['hora_selecionada'] = hora
-                        st.rerun()
+                        if col.button(f"⏰ {hora}", key=f"btn_{hora}", use_container_width=True):
+                            st.session_state['hora_selecionada'] = hora
         
-        # Mostrar horários reservados como botões desabilitados
+        st.divider()
+        
+        # HORÁRIOS RESERVADOS
         if horarios_reservados:
             st.markdown("**Horários já reservados:**")
             for i in range(0, len(horarios_reservados), num_colunas):
@@ -200,15 +189,14 @@ if menu == "🏪 Agendar Serviço":
                 for j, col in enumerate(cols):
                     if i + j < len(horarios_reservados):
                         hora = horarios_reservados[i + j]
-                        col.button(f"🚫 {hora}", key=f"btn_reserv_{hora}", use_container_width=True, disabled=True)
+                        col.button(f"🚫 {hora}", key=f"btn_res_{hora}", use_container_width=True, disabled=True)
         
         # Mostrar seleção atual
         hora_selecionada = st.session_state.get('hora_selecionada', None)
         if hora_selecionada:
-            st.success(f"✅ Horário selecionado: **{hora_selecionada}**")
+            st.success(f"✅ Horário selecionado: **{hora_selecionada}**", icon="✅")
     else:
         st.warning("⚠️ Não há horários disponíveis para esta data (domingo ou feriado)")
-        hora_selecionada = None
     
     st.markdown("### 📝 Tipo de Serviço")
     servico = st.selectbox(
